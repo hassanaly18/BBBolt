@@ -3,10 +3,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ShoppingCart } from 'lucide-react-native';
 import { hotSaleProducts, rationPacks } from '@/data/mockData';
 import PriceTag from '@/components/PriceTag';
+import { useCart } from '../../context/CartContext';
 
 export default function ProductDetails() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { addToCart, getCartCount } = useCart();
+  const cartCount = getCartCount();
   
   // Combine all products to find the one we're looking for
   const allProducts = [...hotSaleProducts, ...rationPacks];
@@ -20,6 +23,10 @@ export default function ProductDetails() {
     );
   }
 
+  const handleAddToCart = () => {
+    addToCart(product);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -30,8 +37,16 @@ export default function ProductDetails() {
           <ArrowLeft size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Product Details</Text>
-        <TouchableOpacity style={styles.cartButton}>
+        <TouchableOpacity 
+          style={styles.cartButton}
+          onPress={() => router.push('/cart')}
+        >
           <ShoppingCart size={24} color="#333" />
+          {cartCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{cartCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -84,7 +99,10 @@ export default function ProductDetails() {
         <TouchableOpacity style={styles.compareButton}>
           <Text style={styles.compareButtonText}>+ Compare</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.addToCartButton}>
+        <TouchableOpacity 
+          style={styles.addToCartButton}
+          onPress={handleAddToCart}
+        >
           <Text style={styles.addToCartButtonText}>Add to Cart</Text>
         </TouchableOpacity>
       </View>
@@ -133,6 +151,23 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#5D3FD3',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   content: {
     flex: 1,

@@ -1,73 +1,89 @@
-import { Tabs, Stack } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
-import { View, TouchableOpacity, Image, StyleSheet } from 'react-native';
-
-function Header() {
-  return (
-    <View style={styles.header}>
-      <TouchableOpacity style={styles.navButton}>
-        <FontAwesome name="bars" size={24} color="#333" />
-      </TouchableOpacity>
-      <Image 
-        source={require('../../assets/images/icon.png')}
-        style={styles.logo}
-      />
-      <View style={styles.rightNav}>
-        <TouchableOpacity style={styles.navButton}>
-          <FontAwesome name="search" size={24} color="#333" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navButton}>
-          <FontAwesome name="shopping-cart" size={24} color="#333" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
+import { View, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import colors from '../constants/colors';
 
 export default function TabsLayout() {
   return (
-    <Stack>
-      <Stack.Screen 
-        name="index"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen 
-        name="product/[id]"
-        options={{
-          headerShown: true,
-          headerTitle: 'Product Details',
-          presentation: 'card',
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView 
+        style={{ 
+          flex: 1,
+          backgroundColor: colors.background.main,
+          paddingTop: Platform.OS === 'web' ? 64 : 0,
+          ...(Platform.OS === 'web' ? {
+            maxWidth: 800,
+            marginHorizontal: 'auto',
+            height: '100vh',
+          } : {}),
         }}
-      />
-      <Stack.Screen
-        name="(tabs)"
-        options={{ headerShown: false }}
-      />
-    </Stack>
+      >
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarActiveTintColor: colors.primary.main,
+            tabBarInactiveTintColor: colors.text.secondary,
+            tabBarStyle: {
+              borderTopWidth: 1,
+              borderTopColor: colors.border.main,
+              height: Platform.OS === 'web' ? 70 : 60,
+              paddingBottom: Platform.OS === 'web' ? 12 : 8,
+              paddingTop: Platform.OS === 'web' ? 12 : 8,
+              ...(Platform.OS === 'web' ? {
+                position: 'sticky',
+                bottom: 0,
+                maxWidth: 800,
+                marginHorizontal: 'auto',
+                borderTopLeftRadius: 12,
+                borderTopRightRadius: 12,
+              } : {}),
+            },
+            tabBarLabelStyle: {
+              fontSize: 12,
+              fontWeight: '500',
+            },
+          }}
+        >
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: 'Home',
+              tabBarIcon: ({ color }) => (
+                <FontAwesome name="home" size={24} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="shop"
+            options={{
+              title: 'Shop',
+              tabBarIcon: ({ color }) => (
+                <FontAwesome name="shopping-bag" size={24} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="cart"
+            options={{
+              title: 'Cart',
+              tabBarIcon: ({ color }) => (
+                <FontAwesome name="shopping-cart" size={24} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="account"
+            options={{
+              title: 'Account',
+              tabBarIcon: ({ color }) => (
+                <FontAwesome name="user" size={24} color={color} />
+              ),
+            }}
+          />
+        </Tabs>
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
-}
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  rightNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  navButton: {
-    padding: 8,
-  },
-  logo: {
-    width: 32,
-    height: 32,
-    resizeMode: 'contain',
-  },
-}); 
+} 

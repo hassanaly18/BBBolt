@@ -1,13 +1,12 @@
-import { View, Text, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
-import Header from '@components/Header';
-import Banner from '@components/Banner';
-import ProductSection from '@components/ProductSection';
-import CategoryGrid from '@components/CategoryGrid';
-import { hotSaleProducts, rationPacks, categories } from '@data/mockData';
+import { View, ScrollView, StyleSheet } from 'react-native';
+import Banner from '../../components/Banner';
+import ProductSection from '../../components/ProductSection';
+import CategoryGrid from '../../components/CategoryGrid';
+import { hotSaleProducts, rationPacks, categories } from '../../data/mockData';
 
 export default function HomeScreen() {
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <Banner />
         
@@ -23,12 +22,11 @@ export default function HomeScreen() {
           seeAllText="See all" 
         />
         
-        <Text style={styles.sectionTitle}>Categories</Text>
         <CategoryGrid categories={categories} />
         
         <View style={styles.spacer} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -39,13 +37,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginHorizontal: 16,
-    marginTop: 24,
-    marginBottom: 16,
   },
   spacer: {
     height: 20,

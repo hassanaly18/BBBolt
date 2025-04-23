@@ -1,31 +1,57 @@
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Menu, Search, ShoppingCart } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { useCart } from '../app/context/CartContext';
+import { useState } from 'react';
+import SideMenu from './SideMenu';
 
 export default function Header() {
+  const router = useRouter();
+  const { getCartCount } = useCart();
+  const cartCount = getCartCount();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   return (
-    <View style={styles.container}>
-      <TouchableOpacity style={styles.iconButton}>
-        <Menu size={24} color="#333" />
-      </TouchableOpacity>
-      
-      <View style={styles.logoContainer}>
-        <Image 
-          source={{ uri: 'https://img.icons8.com/color/96/grocery-bag.png' }} 
-          style={styles.logo} 
-          resizeMode="contain"
-        />
-      </View>
-      
-      <View style={styles.rightIcons}>
-        <TouchableOpacity style={styles.iconButton}>
-          <Search size={24} color="#333" />
+    <>
+      <View style={styles.container}>
+        <TouchableOpacity 
+          style={styles.iconButton}
+          onPress={() => setIsMenuOpen(true)}
+        >
+          <Menu size={24} color="#333" />
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.iconButton}>
-          <ShoppingCart size={24} color="#333" />
-        </TouchableOpacity>
+        <View style={styles.logoContainer}>
+          <Image 
+            source={{ uri: 'https://img.icons8.com/color/96/grocery-bag.png' }} 
+            style={styles.logo} 
+            resizeMode="contain"
+          />
+        </View>
+        
+        <View style={styles.rightIcons}>
+          <TouchableOpacity 
+            style={styles.iconButton}
+            onPress={() => router.push('/search')}
+          >
+            <Search size={24} color="#333" />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.iconButton}
+            onPress={() => router.push('/cart')}
+          >
+            <ShoppingCart size={24} color="#333" />
+            {cartCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{cartCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
+      <SideMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
+    </>
   );
 }
 
@@ -55,5 +81,22 @@ const styles = StyleSheet.create({
   },
   rightIcons: {
     flexDirection: 'row',
+  },
+  badge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#5D3FD3',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

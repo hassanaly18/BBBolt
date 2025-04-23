@@ -1,12 +1,19 @@
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import PriceTag from './PriceTag';
+import { useCart } from '../app/context/CartContext';
 
 export default function ProductCard({ product }) {
   const router = useRouter();
+  const { addToCart } = useCart();
 
   const handlePress = () => {
     router.push(`/product/${product.id}`);
+  };
+
+  const handleAddToCart = (e) => {
+    e.stopPropagation();
+    addToCart(product);
   };
 
   return (
@@ -26,7 +33,10 @@ export default function ProductCard({ product }) {
             originalPrice={product.originalPrice} 
           />
           
-          <TouchableOpacity style={styles.addButton}>
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={handleAddToCart}
+          >
             <Text style={styles.addButtonText}>+</Text>
           </TouchableOpacity>
         </View>

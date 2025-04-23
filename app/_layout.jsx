@@ -4,11 +4,10 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { View, StyleSheet, Platform } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import Navbar from './components/Navbar';
-import BottomTabs from './components/BottomTabs';
-import { Slot } from 'expo-router';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import colors from './constants/colors';
+import { CartProvider } from './context/CartContext';
+import Header from '../components/Header';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -32,19 +31,23 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={styles.container} onLayout={onLayoutRootView}>
-        <SafeAreaView edges={['top']} style={styles.safeTop}>
-          <Navbar />
-        </SafeAreaView>
-        <View style={styles.content}>
-          <Slot />
-        </View>
-        <SafeAreaView edges={['bottom']} style={styles.safeBottom}>
-          <BottomTabs />
-        </SafeAreaView>
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+    <CartProvider>
+      <SafeAreaProvider>
+        <GestureHandlerRootView style={styles.container} onLayout={onLayoutRootView}>
+          <View style={styles.headerContainer}>
+            <Header />
+          </View>
+          <View style={styles.content}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                animation: 'none',
+              }}
+            />
+          </View>
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
+    </CartProvider>
   );
 }
 
@@ -58,19 +61,10 @@ const styles = StyleSheet.create({
       height: '100vh',
     } : {}),
   },
-  safeTop: {
-    backgroundColor: colors.background.white,
+  headerContainer: {
     ...(Platform.OS === 'web' ? {
       position: 'sticky',
       top: 0,
-      zIndex: 100,
-    } : {}),
-  },
-  safeBottom: {
-    backgroundColor: colors.background.white,
-    ...(Platform.OS === 'web' ? {
-      position: 'sticky',
-      bottom: 0,
       zIndex: 100,
     } : {}),
   },
