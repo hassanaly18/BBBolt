@@ -1,11 +1,13 @@
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCart } from '../../context/CartContext';
+import { useOrders } from '../../context/OrderContext';
 import { ArrowLeft } from 'lucide-react-native';
 
 export default function CheckoutScreen() {
   const router = useRouter();
-  const { getCartTotal, clearCart } = useCart();
+  const { getCartTotal, clearCart, cartItems } = useCart();
+  const { createOrder } = useOrders();
   
   const subtotal = getCartTotal();
   const deliveryFee = 50;
@@ -13,7 +15,11 @@ export default function CheckoutScreen() {
   const total = subtotal + deliveryFee - discount;
 
   const handlePlaceOrder = () => {
+    // Create the order
+    createOrder(cartItems, total);
+    // Clear the cart
     clearCart();
+    // Navigate to orders tab
     router.push('/(tabs)');
   };
 

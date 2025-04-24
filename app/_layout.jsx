@@ -7,6 +7,7 @@ import { View, StyleSheet, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import colors from './constants/colors';
 import { CartProvider } from './context/CartContext';
+import { OrderProvider } from './context/OrderContext';
 import Header from '../components/Header';
 
 SplashScreen.preventAutoHideAsync();
@@ -32,21 +33,23 @@ export default function RootLayout() {
 
   return (
     <CartProvider>
-      <SafeAreaProvider>
-        <GestureHandlerRootView style={styles.container} onLayout={onLayoutRootView}>
-          <View style={styles.headerContainer}>
-            <Header />
-          </View>
-          <View style={styles.content}>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                animation: 'none',
-              }}
-            />
-          </View>
-        </GestureHandlerRootView>
-      </SafeAreaProvider>
+      <OrderProvider>
+        <SafeAreaProvider>
+          <GestureHandlerRootView style={styles.container} onLayout={onLayoutRootView}>
+            <View style={styles.headerContainer}>
+              <Header />
+            </View>
+            <View style={styles.content}>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: 'none',
+                }}
+              />
+            </View>
+          </GestureHandlerRootView>
+        </SafeAreaProvider>
+      </OrderProvider>
     </CartProvider>
   );
 }
