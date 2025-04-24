@@ -1,7 +1,8 @@
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import PriceTag from './PriceTag';
 import { useCart } from '../app/context/CartContext';
+
+const fallbackImage = 'https://images.pexels.com/photos/2286776/pexels-photo-2286776.jpeg';
 
 export default function ProductCard({ product }) {
   const router = useRouter();
@@ -16,23 +17,33 @@ export default function ProductCard({ product }) {
     addToCart(product);
   };
 
+  const handleImageError = (e) => {
+    // If the image fails to load, it will use the fallback image
+    e.target.src = fallbackImage;
+  };
+
   return (
     <TouchableOpacity style={styles.container} onPress={handlePress}>
       <View style={styles.imageContainer}>
-        <Image source={{ uri: product.image }} style={styles.image} resizeMode="contain" />
+        <Image 
+          source={{ uri: product.image || fallbackImage }} 
+          style={styles.image} 
+          resizeMode="cover"
+          defaultSource={require('../assets/images/icon.png')}
+        />
       </View>
       
       <View style={styles.infoContainer}>
         <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
-        <Text style={styles.description} numberOfLines={1}>{product.description}</Text>
+        <Text style={styles.store} numberOfLines={1}>{product.store}</Text>
         
         <View style={styles.priceContainer}>
-          <PriceTag 
-            price={product.price} 
-            discount={product.discount} 
-            originalPrice={product.originalPrice} 
-          />
-          
+          <View>
+            <Text style={styles.price}>₹{product.price.toFixed(2)}</Text>
+            {product.marketPrice && (
+              <Text style={styles.marketPrice}>₹{product.marketPrice.toFixed(2)}</Text>
+            )}
+          </View>
           <TouchableOpacity 
             style={styles.addButton}
             onPress={handleAddToCart}
@@ -47,11 +58,9 @@ export default function ProductCard({ product }) {
 
 const styles = StyleSheet.create({
   container: {
-    width: 160,
     backgroundColor: '#FFF',
     borderRadius: 12,
     overflow: 'hidden',
-    marginRight: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -59,11 +68,9 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   imageContainer: {
-    height: 120,
+    height: 140,
+    width: '100%',
     backgroundColor: '#F9F9F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 8,
   },
   image: {
     width: '100%',
@@ -76,9 +83,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 4,
-    height: 40,
+    color: '#333',
   },
-  description: {
+  store: {
     fontSize: 12,
     color: '#666',
     marginBottom: 8,
@@ -87,6 +94,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  price: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#5D3FD3',
+  },
+  marketPrice: {
+    fontSize: 12,
+    color: '#999',
+    textDecorationLine: 'line-through',
   },
   addButton: {
     width: 24,

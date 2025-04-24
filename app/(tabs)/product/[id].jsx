@@ -4,6 +4,7 @@ import { ArrowLeft, ShoppingCart } from 'lucide-react-native';
 import { hotSaleProducts, rationPacks } from '@/data/mockData';
 import PriceTag from '@/components/PriceTag';
 import { useCart } from '../../context/CartContext';
+import colors from '../../constants/colors';
 
 export default function ProductDetails() {
   const { id } = useLocalSearchParams();
@@ -28,20 +29,20 @@ export default function ProductDetails() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <ArrowLeft size={24} color="#333" />
+          <ArrowLeft size={24} color={colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Product Details</Text>
         <TouchableOpacity 
           style={styles.cartButton}
           onPress={() => router.push('/cart')}
         >
-          <ShoppingCart size={24} color="#333" />
+          <ShoppingCart size={24} color={colors.text.primary} />
           {cartCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{cartCount}</Text>
@@ -106,7 +107,7 @@ export default function ProductDetails() {
           <Text style={styles.addToCartButtonText}>Add to Cart</Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -125,16 +126,16 @@ function StorePrice({ storeName, price, distance }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background.main,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: '#FFF',
+    backgroundColor: colors.background.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: colors.border,
   },
   backButton: {
     width: 40,
@@ -145,18 +146,20 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
+    color: colors.text.primary,
   },
   cartButton: {
     width: 40,
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
   },
   badge: {
     position: 'absolute',
     top: 0,
     right: 0,
-    backgroundColor: '#5D3FD3',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     minWidth: 20,
     height: 20,

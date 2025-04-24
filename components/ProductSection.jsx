@@ -20,7 +20,9 @@ export default function ProductSection({ title, products, seeAllText, onSeeAllPr
         contentContainerStyle={styles.scrollContent}
       >
         {products.map((product) => (
-          <ProductCard key={product.id} product={product} />
+          <View key={product.id} style={styles.productWrapper}>
+            <ProductCard product={product} />
+          </View>
         ))}
       </ScrollView>
     </View>
@@ -49,5 +51,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingLeft: 16,
     paddingRight: 4,
+    gap: 12,
+  },
+  productWrapper: {
+    width: 160, // Fixed width for each product card
+    marginRight: 12, // Space between cards
   },
 });

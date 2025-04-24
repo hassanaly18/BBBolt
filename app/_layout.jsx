@@ -45,7 +45,14 @@ export default function RootLayout() {
                   headerShown: false,
                   animation: 'none',
                 }}
-              />
+              >
+                <Stack.Screen
+                  name="(tabs)/product/[id]"
+                  options={{
+                    headerShown: false,
+                  }}
+                />
+              </Stack>
             </View>
           </GestureHandlerRootView>
         </SafeAreaProvider>

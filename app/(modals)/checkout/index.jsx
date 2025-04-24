@@ -1,13 +1,13 @@
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCart } from '../../context/CartContext';
-import { useOrders } from '../../context/OrderContext';
+import { useOrder } from '../../context/OrderContext';
 import { ArrowLeft } from 'lucide-react-native';
 
 export default function CheckoutScreen() {
   const router = useRouter();
   const { getCartTotal, clearCart, cartItems } = useCart();
-  const { createOrder } = useOrders();
+  const { addOrder } = useOrder();
   
   const subtotal = getCartTotal();
   const deliveryFee = 50;
@@ -16,7 +16,21 @@ export default function CheckoutScreen() {
 
   const handlePlaceOrder = () => {
     // Create the order
-    createOrder(cartItems, total);
+    const newOrder = {
+      id: Date.now().toString(),
+      orderNumber: `#ORD-${Date.now().toString().slice(-6)}`,
+      date: new Date().toISOString().split('T')[0],
+      status: 'Processing',
+      total,
+      items: cartItems.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        image: item.image
+      })),
+      store: 'Jalal Sons Model Town'
+    };
+    addOrder(newOrder);
     // Clear the cart
     clearCart();
     // Navigate to orders tab

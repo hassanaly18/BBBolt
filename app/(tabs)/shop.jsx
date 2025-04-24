@@ -1,45 +1,85 @@
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity } from 'react-native';
-import { Link } from 'expo-router';
-import mockData from '../data/mockData';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { useState } from 'react';
+import { Filter } from 'lucide-react-native';
+import Banner from '../../components/Banner';
+import ProductCard from '../../components/ProductCard';
+import SortModal from '../../components/SortModal';
+import colors from '../constants/colors';
+import { products } from '../data/mockData';
 
-export default function Shop() {
-  const renderProduct = ({ item }) => {
-    const discount = Math.round(((item.marketPrice - item.price) / item.marketPrice) * 100);
+const sortOptions = {
+  popularity: 'Popularity',
+  priceLowToHigh: 'Price: Low to High',
+  priceHighToLow: 'Price: High to Low',
+  newest: 'Newest First',
+};
 
-    return (
-      <Link href={`/product/${item.id}`} asChild>
-        <TouchableOpacity style={styles.productCard}>
-          <Image source={{ uri: item.image }} style={styles.productImage} />
-          <View style={styles.productInfo}>
-            <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-            <Text style={styles.storeName}>{item.store}</Text>
-            <View style={styles.ratingContainer}>
-              <Ionicons name="star" size={14} color="#FFD700" />
-              <Text style={styles.rating}>{item.rating}</Text>
-              <Text style={styles.reviews}>({item.reviews})</Text>
-            </View>
-            <View style={styles.priceContainer}>
-              <Text style={styles.price}>₹{item.price.toFixed(2)}</Text>
-              <Text style={styles.marketPrice}>₹{item.marketPrice.toFixed(2)}</Text>
-              <View style={styles.discountBadge}>
-                <Text style={styles.discountText}>{discount}% OFF</Text>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Link>
-    );
+export default function ShopScreen() {
+  const [sortBy, setSortBy] = useState('popularity');
+  const [showSortModal, setShowSortModal] = useState(false);
+  const [sortedProducts, setSortedProducts] = useState(products);
+
+  const handleSort = (sortType) => {
+    setSortBy(sortType);
+    let sorted = [...products];
+    
+    switch (sortType) {
+      case 'priceLowToHigh':
+        sorted.sort((a, b) => a.price - b.price);
+        break;
+      case 'priceHighToLow':
+        sorted.sort((a, b) => b.price - a.price);
+        break;
+      case 'newest':
+        // Assuming newer items are at the end of the array
+        sorted.reverse();
+        break;
+      default:
+        // Default to original order (popularity)
+        sorted = [...products];
+    }
+    
+    setSortedProducts(sorted);
   };
+
+  const renderHeader = () => (
+    <>
+      <Banner />
+      <View style={styles.filterContainer}>
+        <TouchableOpacity 
+          style={styles.filterButton}
+          onPress={() => setShowSortModal(true)}
+        >
+          <Filter size={20} color={colors.text.primary} />
+          <Text style={styles.filterText}>Sort by: {sortOptions[sortBy]}</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
+  const renderItem = ({ item }) => (
+    <View style={styles.productContainer}>
+      <ProductCard product={item} />
+    </View>
+  );
 
   return (
     <View style={styles.container}>
       <FlatList
-        data={mockData.products}
-        renderItem={renderProduct}
+        data={sortedProducts}
+        renderItem={renderItem}
         keyExtractor={item => item.id.toString()}
-        contentContainerStyle={styles.productList}
-        showsVerticalScrollIndicator={false}
+        numColumns={2}
+        ListHeaderComponent={renderHeader}
+        contentContainerStyle={styles.listContent}
+        columnWrapperStyle={styles.row}
+      />
+
+      <SortModal
+        isVisible={showSortModal}
+        onClose={() => setShowSortModal(false)}
+        selectedSort={sortBy}
+        onSelect={handleSort}
       />
     </View>
   );
@@ -48,81 +88,35 @@ export default function Shop() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background.main,
   },
-  productList: {
+  listContent: {
     padding: 16,
-    gap: 16,
   },
-  productCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    overflow: 'hidden',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+  row: {
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  productImage: {
-    width: '100%',
-    height: 200,
-    resizeMode: 'cover',
+  productContainer: {
+    width: '48%', // Slightly less than 50% to account for spacing
   },
-  productInfo: {
-    padding: 12,
+  filterContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 16,
   },
-  productName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-    color: '#333',
-  },
-  storeName: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-  },
-  ratingContainer: {
+  filterButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    backgroundColor: colors.background.white,
+    padding: 8,
+    borderRadius: 8,
+    gap: 8,
   },
-  rating: {
-    marginLeft: 4,
+  filterText: {
     fontSize: 14,
-    color: '#666',
-  },
-  reviews: {
-    marginLeft: 4,
-    fontSize: 14,
-    color: '#666',
-  },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  price: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-    marginRight: 8,
-  },
-  marketPrice: {
-    fontSize: 16,
-    color: '#999',
-    textDecorationLine: 'line-through',
-    marginRight: 8,
-  },
-  discountBadge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  discountText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    color: colors.text.primary,
   },
 }); 

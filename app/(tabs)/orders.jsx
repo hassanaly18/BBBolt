@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { Package, ChevronRight } from 'lucide-react-native';
 import colors from '../constants/colors';
 import { useState } from 'react';
-import { useOrders } from '../context/OrderContext';
+import { useOrder } from '../context/OrderContext';
 
 const CancelOrderModal = ({ isVisible, onClose, onConfirm }) => {
   return (
@@ -41,7 +41,7 @@ const CancelOrderModal = ({ isVisible, onClose, onConfirm }) => {
 
 export default function OrdersScreen() {
   const router = useRouter();
-  const { orders, cancelOrder } = useOrders();
+  const { orders, updateOrderStatus } = useOrder();
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isCancelModalVisible, setIsCancelModalVisible] = useState(false);
 
@@ -51,7 +51,7 @@ export default function OrdersScreen() {
   };
 
   const handleConfirmCancel = () => {
-    cancelOrder(selectedOrder.id);
+    updateOrderStatus(selectedOrder.id, 'Cancelled');
     setIsCancelModalVisible(false);
     setSelectedOrder(null);
   };

@@ -5,62 +5,35 @@ const OrderContext = createContext();
 export function OrderProvider({ children }) {
   const [orders, setOrders] = useState([]);
 
-  const createOrder = (cartItems, total, store) => {
-    const newOrder = {
-      id: Date.now().toString(),
-      orderNumber: `#ORD-${Date.now().toString().slice(-6)}`,
-      date: new Date().toISOString().split('T')[0],
-      status: 'Processing',
-      total,
-      items: cartItems.map(item => ({
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
-        image: item.image
-      })),
-      store: store || 'Jalal Sons Model Town'
-    };
-
-    setOrders(prevOrders => [newOrder, ...prevOrders]);
-    return newOrder;
-  };
-
-  const cancelOrder = (orderId) => {
-    setOrders(prevOrders => 
-      prevOrders.map(order => 
-        order.id === orderId 
-          ? { ...order, status: 'Cancelled' }
-          : order
-      )
-    );
+  const addOrder = (order) => {
+    setOrders(prevOrders => [...prevOrders, order]);
   };
 
   const updateOrderStatus = (orderId, status) => {
     setOrders(prevOrders => 
       prevOrders.map(order => 
-        order.id === orderId 
-          ? { ...order, status }
-          : order
+        order.id === orderId ? { ...order, status } : order
       )
     );
   };
 
+  const getOrders = () => {
+    return orders;
+  };
+
   return (
-    <OrderContext.Provider value={{
-      orders,
-      createOrder,
-      cancelOrder,
-      updateOrderStatus
-    }}>
+    <OrderContext.Provider value={{ orders, addOrder, updateOrderStatus, getOrders }}>
       {children}
     </OrderContext.Provider>
   );
 }
 
-export function useOrders() {
+export const useOrder = () => {
   const context = useContext(OrderContext);
   if (!context) {
-    throw new Error('useOrders must be used within an OrderProvider');
+    throw new Error('useOrder must be used within an OrderProvider');
   }
   return context;
-} 
+};
+
+export default OrderProvider; 

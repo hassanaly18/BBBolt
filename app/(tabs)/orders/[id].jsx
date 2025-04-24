@@ -2,12 +2,12 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'rea
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Package, MapPin, Clock, CreditCard } from 'lucide-react-native';
 import colors from '../../constants/colors';
-import { useOrders } from '../../context/OrderContext';
+import { useOrder } from '../../context/OrderContext';
 
 export default function OrderDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { orders } = useOrders();
+  const { orders } = useOrder();
   
   const order = orders.find(order => order.id === id);
 
