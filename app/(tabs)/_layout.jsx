@@ -65,6 +65,15 @@ export default function TabsLayout() {
             }}
           />
           <Tabs.Screen
+            name="ration-packs"
+            options={{
+              title: 'Ration',
+              tabBarIcon: ({ color }) => (
+                <FontAwesome name="box" size={24} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
             name="cart"
             options={{
               title: 'Cart',

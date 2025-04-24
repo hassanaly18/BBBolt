@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { Home, ShoppingBag, ShoppingCart, User, X, Package } from 'lucide-react-native';
+import { Home, ShoppingBag, ShoppingCart, User, X, Package, Box } from 'lucide-react-native';
 import colors from '../app/constants/colors';
 
 export default function SideMenu({ isOpen, onClose }) {
@@ -19,6 +19,7 @@ export default function SideMenu({ isOpen, onClose }) {
   const menuItems = [
     { icon: Home, label: 'Home', route: '/' },
     { icon: ShoppingBag, label: 'Shop', route: '/shop' },
+    { icon: Box, label: 'Ration Packs', route: '/ration-packs' },
     { icon: ShoppingCart, label: 'Cart', route: '/cart' },
     { icon: Package, label: 'Orders', route: '/orders' },
     { icon: User, label: 'Account', route: '/account' },
