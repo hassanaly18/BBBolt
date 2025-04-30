@@ -2,7 +2,8 @@ import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCart } from '../app/context/CartContext';
 
-const fallbackImage = 'https://images.pexels.com/photos/2286776/pexels-photo-2286776.jpeg';
+const fallbackImage =
+  'https://images.pexels.com/photos/2286776/pexels-photo-2286776.jpeg';
 
 export default function ProductCard({ product }) {
   const router = useRouter();
@@ -25,29 +26,32 @@ export default function ProductCard({ product }) {
   return (
     <TouchableOpacity style={styles.container} onPress={handlePress}>
       <View style={styles.imageContainer}>
-        <Image 
-          source={{ uri: product.image || fallbackImage }} 
-          style={styles.image} 
+        <Image
+          source={{ uri: product.image || fallbackImage }}
+          style={styles.image}
           resizeMode="cover"
           defaultSource={require('../assets/images/icon.png')}
         />
       </View>
-      
+
       <View style={styles.infoContainer}>
-        <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
-        <Text style={styles.store} numberOfLines={1}>{product.store}</Text>
-        
+        <Text style={styles.name} numberOfLines={2}>
+          {product.name}
+        </Text>
+        <Text style={styles.store} numberOfLines={1}>
+          {product.store}
+        </Text>
+
         <View style={styles.priceContainer}>
           <View>
-            <Text style={styles.price}>₹{product.price.toFixed(2)}</Text>
+            <Text style={styles.price}>Rs {product.price.toFixed(2)}</Text>
             {product.marketPrice && (
-              <Text style={styles.marketPrice}>₹{product.marketPrice.toFixed(2)}</Text>
+              <Text style={styles.marketPrice}>
+                Rs {product.marketPrice.toFixed(2)}
+              </Text>
             )}
           </View>
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={handleAddToCart}
-          >
+          <TouchableOpacity style={styles.addButton} onPress={handleAddToCart}>
             <Text style={styles.addButtonText}>+</Text>
           </TouchableOpacity>
         </View>

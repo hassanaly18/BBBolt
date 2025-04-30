@@ -1,70 +1,104 @@
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground } from 'react-native';
-import { useRouter } from 'expo-router';
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ImageBackground,
+} from 'react-native';
+import { ChevronRight } from 'lucide-react-native';
+import theme from '../app/theme';
 
-export default function Banner() {
-  const router = useRouter();
-
-  const handleShopPress = () => {
-    router.replace('shop');
-  };
-
+const Banner = ({ onPress }) => {
   return (
-    <View style={styles.container}>
+    <TouchableOpacity
+      style={styles.container}
+      onPress={onPress || (() => {})}
+      activeOpacity={0.9}
+    >
       <ImageBackground
-        source={{ uri: 'https://images.pexels.com/photos/264636/pexels-photo-264636.jpeg' }}
-        style={styles.background}
-        imageStyle={styles.backgroundImage}
+        source={{
+          uri: 'https://via.placeholder.com/800x300/4d216d/ffffff?text=Discover+Local+Vendors',
+        }}
+        style={styles.backgroundImage}
+        imageStyle={styles.backgroundImageStyle}
       >
+        <View style={styles.overlay} />
         <View style={styles.content}>
-          <Text style={styles.title}>Compare prices of grocery items now!</Text>
-          <TouchableOpacity 
-            style={styles.button}
-            onPress={handleShopPress}
-          >
-            <Text style={styles.buttonText}>Shop Now</Text>
-          </TouchableOpacity>
+          <View style={styles.textContainer}>
+            <Text style={styles.title}>Discover Local Vendors</Text>
+            <Text style={styles.subtitle}>
+              Find quality products from trusted local businesses
+            </Text>
+            <View style={styles.ctaContainer}>
+              <Text style={styles.ctaText}>Explore Now</Text>
+              <ChevronRight
+                size={16}
+                color={theme.colors.primary.contrastText}
+              />
+            </View>
+          </View>
         </View>
       </ImageBackground>
-    </View>
+    </TouchableOpacity>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
-    margin: 16,
-    borderRadius: 12,
+    height: 140,
+    marginHorizontal: theme.spacing.md,
+    marginVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
     overflow: 'hidden',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-  },
-  background: {
-    width: '100%',
-    aspectRatio: 2,
+    backgroundColor: theme.colors.primary.main, // Fallback color
   },
   backgroundImage: {
-    borderRadius: 12,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  backgroundImageStyle: {
+    borderRadius: theme.borderRadius.lg,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(77, 33, 109, 0.4)', // Primary color with 40% opacity
+    borderRadius: theme.borderRadius.lg,
   },
   content: {
     flex: 1,
-    padding: 16,
+    padding: theme.spacing.md,
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  textContainer: {
+    maxWidth: '80%',
   },
   title: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 16,
+    fontSize: theme.typography.h3.fontSize,
+    fontWeight: theme.typography.h3.fontWeight,
+    color: theme.colors.primary.contrastText,
+    marginBottom: theme.spacing.xs,
   },
-  button: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+  subtitle: {
+    fontSize: theme.typography.body2.fontSize,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: theme.spacing.md,
+  },
+  ctaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.secondary.main,
     alignSelf: 'flex-start',
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
   },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+  ctaText: {
+    fontSize: theme.typography.button.fontSize,
+    fontWeight: '500',
+    color: theme.colors.primary.main,
+    marginRight: theme.spacing.xs,
   },
 });
+
+export default Banner;
