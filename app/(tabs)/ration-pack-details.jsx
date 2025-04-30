@@ -1,5 +1,11 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ShoppingCart } from 'lucide-react-native';
 import { useCart } from '../context/CartContext';
@@ -13,16 +19,16 @@ export default function RationPackDetails() {
 
   // Define prices for items (you might want to move this to a central location)
   const itemPrices = {
-    'Atta': 250,
-    'Rice': 150,
+    Atta: 250,
+    Rice: 150,
     'Cooking Oil': 180,
-    'Ghee': 500,
-    'Tea': 120,
-    'Haldi': 80,
-    'Cornflour': 60,
-    'Toothpaste': 90,
+    Ghee: 500,
+    Tea: 120,
+    Haldi: 80,
+    Cornflour: 60,
+    Toothpaste: 90,
     'Tissue paper': 45,
-    'Soap': 40,
+    Soap: 40,
   };
 
   const totalPrice = selectedItemsArray.reduce((total, item) => {
@@ -35,9 +41,9 @@ export default function RationPackDetails() {
       id: `custom-pack-${Date.now()}`, // Generate unique ID
       name: 'Custom Ration Pack',
       price: totalPrice,
-      items: selectedItemsArray.map(itemName => ({
+      items: selectedItemsArray.map((itemName) => ({
         name: itemName,
-        price: itemPrices[itemName]
+        price: itemPrices[itemName],
       })),
       type: 'ration_pack', // Add type to distinguish from regular products
       image: 'https://img.icons8.com/color/96/grocery-bag.png', // You can change this to a custom image
@@ -53,7 +59,7 @@ export default function RationPackDetails() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
         >
@@ -68,17 +74,17 @@ export default function RationPackDetails() {
           {selectedItemsArray.map((item, index) => (
             <View key={index} style={styles.itemRow}>
               <Text style={styles.itemName}>{item}</Text>
-              <Text style={styles.itemPrice}>₹{itemPrices[item]}</Text>
+              <Text style={styles.itemPrice}>Rs {itemPrices[item]}</Text>
             </View>
           ))}
         </View>
 
         <View style={styles.totalSection}>
           <Text style={styles.totalLabel}>Total Price</Text>
-          <Text style={styles.totalPrice}>₹{totalPrice}</Text>
+          <Text style={styles.totalPrice}>Rs {totalPrice}</Text>
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.addToCartButton}
           onPress={handleAddToCart}
         >
@@ -181,4 +187,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 8,
   },
-}); 
+});

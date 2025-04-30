@@ -1,11 +1,31 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Modal } from 'react-native';
+//C:\Users\faeiz\Desktop\BBBolt\app\(tabs)\orders.jsx
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  Modal,
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { Package, ChevronRight } from 'lucide-react-native';
+import {
+  Package,
+  ChevronRight,
+  ShoppingBag,
+  Clock,
+  MapPin,
+} from 'lucide-react-native';
 import colors from '../constants/colors';
-import { useState } from 'react';
 import { useOrder } from '../context/OrderContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-const CancelOrderModal = ({ isVisible, onClose, onConfirm }) => {
+const CancelOrderModal = ({ isVisible, onClose, onConfirm, isLoading }) => {
   return (
     <Modal
       visible={isVisible}
@@ -17,20 +37,27 @@ const CancelOrderModal = ({ isVisible, onClose, onConfirm }) => {
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Cancel Order</Text>
           <Text style={styles.modalText}>
-            Are you sure you want to cancel this order? This action cannot be undone.
+            Are you sure you want to cancel this order? This action cannot be
+            undone.
           </Text>
           <View style={styles.modalButtons}>
             <TouchableOpacity
               style={[styles.modalButton, styles.cancelButton]}
               onPress={onClose}
+              disabled={isLoading}
             >
               <Text style={styles.cancelButtonText}>No, Keep Order</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modalButton, styles.confirmButton]}
               onPress={onConfirm}
+              disabled={isLoading}
             >
-              <Text style={styles.confirmButtonText}>Yes, Cancel Order</Text>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.confirmButtonText}>Yes, Cancel Order</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -41,41 +68,130 @@ const CancelOrderModal = ({ isVisible, onClose, onConfirm }) => {
 
 export default function OrdersScreen() {
   const router = useRouter();
-  const { orders, updateOrderStatus } = useOrder();
+  const { orders, cancelOrder, loading, error, fetchOrders } = useOrder();
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isCancelModalVisible, setIsCancelModalVisible] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
+  // Format date to a more readable format
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+
+    const options = { year: 'numeric', month: 'short', day: 'numeric' };
+    return new Date(dateString).toLocaleDateString(undefined, options);
+  };
+
+  // Format status for display
+  const formatStatus = (status) => {
+    if (!status) return 'Processing';
+
+    // Convert from backend status format to display format
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'Pending';
+      case 'processing':
+        return 'Processing';
+      case 'out_for_delivery':
+        return 'Out for Delivery';
+      case 'delivered':
+        return 'Delivered';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return status;
+    }
+  };
+
+  // Get status color based on status
+  const getStatusColor = (status) => {
+    if (!status) return '#FFA726';
+
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return '#FFA726';
+      case 'processing':
+        return '#2196F3';
+      case 'out_for_delivery':
+        return '#9C27B0';
+      case 'delivered':
+        return '#4CAF50';
+      case 'cancelled':
+        return '#FF4D4F';
+      default:
+        return '#FFA726';
+    }
+  };
+
+  // Handle pull-to-refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchOrders();
+    setRefreshing(false);
+  };
+
+  // Handle order cancellation
   const handleCancelOrder = (order) => {
     setSelectedOrder(order);
     setIsCancelModalVisible(true);
   };
 
-  const handleConfirmCancel = () => {
-    updateOrderStatus(selectedOrder.id, 'Cancelled');
-    setIsCancelModalVisible(false);
-    setSelectedOrder(null);
+  // Confirm order cancellation
+  const handleConfirmCancel = async () => {
+    if (!selectedOrder) return;
+
+    setIsCancelling(true);
+    try {
+      const success = await cancelOrder(
+        selectedOrder.id,
+        'Cancelled by customer from app'
+      );
+
+      if (success) {
+        Alert.alert('Success', 'Your order has been cancelled successfully.');
+      } else {
+        Alert.alert('Error', 'Failed to cancel the order. Please try again.');
+      }
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        'An unexpected error occurred. Please try again later.'
+      );
+      console.error('Error cancelling order:', error);
+    } finally {
+      setIsCancelling(false);
+      setIsCancelModalVisible(false);
+      setSelectedOrder(null);
+    }
   };
 
+  // Can this order be cancelled?
+  const canCancel = (status) => {
+    if (!status) return true;
+
+    const lowerStatus = status.toLowerCase();
+    return lowerStatus === 'pending' || lowerStatus === 'processing';
+  };
+
+  // Render each order item
   const renderOrderItem = ({ item }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.orderCard}
       onPress={() => router.push(`/orders/${item.id}`)}
+      activeOpacity={0.7}
     >
       <View style={styles.orderHeader}>
         <View style={styles.orderInfo}>
-          <Text style={styles.orderNumber}>{item.orderNumber}</Text>
-          <Text style={styles.orderDate}>{item.date}</Text>
+          <Text style={styles.orderNumber}>#{item.orderNumber}</Text>
+          <Text style={styles.orderDate}>{formatDate(item.date)}</Text>
         </View>
-        <View style={[
-          styles.statusBadge,
-          { 
-            backgroundColor: 
-              item.status === 'Delivered' ? '#4CAF50' : 
-              item.status === 'Cancelled' ? '#FF4D4F' : 
-              '#FFA726' 
-          }
-        ]}>
-          <Text style={styles.statusText}>{item.status}</Text>
+        <View
+          style={[
+            styles.statusBadge,
+            { backgroundColor: getStatusColor(item.status) },
+          ]}
+        >
+          <Text style={styles.statusText}>{formatStatus(item.status)}</Text>
         </View>
       </View>
 
@@ -84,28 +200,56 @@ export default function OrdersScreen() {
         <Text style={styles.storeName}>{item.store}</Text>
       </View>
 
+      {item.deliveryAddress && (
+        <View style={styles.addressInfo}>
+          <MapPin size={14} color={colors.text.secondary} />
+          <Text style={styles.addressText} numberOfLines={1}>
+            {item.deliveryAddress}
+          </Text>
+        </View>
+      )}
+
       <View style={styles.itemsContainer}>
-        {item.items.map((product, index) => (
+        {item.items.slice(0, 3).map((product, index) => (
           <View key={index} style={styles.itemRow}>
-            <Text style={styles.itemName}>
+            <Text style={styles.itemName} numberOfLines={1}>
               {product.quantity}x {product.name}
             </Text>
-            <Text style={styles.itemPrice}>₹{(product.price * product.quantity).toFixed(2)}</Text>
+            <Text style={styles.itemPrice}>
+              Rs {(product.price * product.quantity).toFixed(2)}
+            </Text>
           </View>
         ))}
+
+        {item.items.length > 3 && (
+          <Text style={styles.moreItemsText}>
+            +{item.items.length - 3} more items
+          </Text>
+        )}
       </View>
 
       <View style={styles.orderFooter}>
-        <Text style={styles.totalText}>Total: ₹{item.total.toFixed(2)}</Text>
-        {item.status === 'Processing' && (
-          <TouchableOpacity 
+        <View style={styles.footerLeft}>
+          <Text style={styles.totalText}>
+            Total: Rs {item.total.toFixed(2)}
+          </Text>
+          <View style={styles.timeInfo}>
+            <Clock size={12} color={colors.text.secondary} />
+            <Text style={styles.timeText}>
+              Est. delivery: {formatDate(new Date(Date.now() + 2 * 86400000))}
+            </Text>
+          </View>
+        </View>
+
+        {canCancel(item.status) && (
+          <TouchableOpacity
             style={styles.cancelButton}
             onPress={(e) => {
               e.stopPropagation();
               handleCancelOrder(item);
             }}
           >
-            <Text style={styles.cancelButtonText}>Cancel Order</Text>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -113,13 +257,26 @@ export default function OrdersScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      {orders.length === 0 ? (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>My Orders</Text>
+      </View>
+
+      {loading && !refreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading your orders...</Text>
+        </View>
+      ) : orders.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No orders yet</Text>
-          <TouchableOpacity 
+          <ShoppingBag size={64} color={colors.text.secondary} />
+          <Text style={styles.emptyTitle}>No orders yet</Text>
+          <Text style={styles.emptyText}>
+            Your order history will appear here
+          </Text>
+          <TouchableOpacity
             style={styles.continueButton}
-            onPress={() => router.push('/shop')}
+            onPress={() => router.push('/')}
           >
             <Text style={styles.continueButtonText}>Start Shopping</Text>
           </TouchableOpacity>
@@ -128,9 +285,17 @@ export default function OrdersScreen() {
         <FlatList
           data={orders}
           renderItem={renderOrderItem}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
         />
       )}
 
@@ -141,8 +306,9 @@ export default function OrdersScreen() {
           setSelectedOrder(null);
         }}
         onConfirm={handleConfirmCancel}
+        isLoading={isCancelling}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -151,9 +317,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.main,
   },
+  header: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background.white,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: colors.text.secondary,
+  },
   listContainer: {
     padding: 16,
     gap: 16,
+    paddingBottom: 32,
   },
   orderCard: {
     backgroundColor: colors.background.white,
@@ -163,7 +352,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
   },
   orderHeader: {
     flexDirection: 'row',
@@ -197,16 +386,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   storeName: {
     fontSize: 14,
     color: colors.text.primary,
     fontWeight: '500',
   },
+  addressInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  addressText: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    flex: 1,
+  },
   itemsContainer: {
     gap: 8,
     marginBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 10,
   },
   itemRow: {
     flexDirection: 'row',
@@ -216,11 +419,19 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 14,
     color: colors.text.secondary,
+    flex: 1,
+    marginRight: 8,
   },
   itemPrice: {
     fontSize: 14,
     color: colors.text.primary,
     fontWeight: '500',
+  },
+  moreItemsText: {
+    fontSize: 13,
+    color: colors.primary,
+    textAlign: 'center',
+    marginTop: 5,
   },
   orderFooter: {
     flexDirection: 'row',
@@ -230,10 +441,23 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingTop: 12,
   },
+  footerLeft: {
+    flex: 1,
+  },
   totalText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
+  },
+  timeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+  },
+  timeText: {
+    fontSize: 12,
+    color: colors.text.secondary,
   },
   cancelButton: {
     paddingHorizontal: 16,
@@ -260,6 +484,17 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '90%',
     maxWidth: 400,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
   },
   modalTitle: {
     fontSize: 20,
@@ -279,8 +514,10 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
   },
   confirmButton: {
     backgroundColor: '#FF4D4F',
@@ -294,22 +531,35 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 16,
+    padding: 24,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginTop: 16,
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: 16,
     color: colors.text.secondary,
-    marginBottom: 16,
+    marginTop: 8,
+    marginBottom: 24,
+    textAlign: 'center',
   },
   continueButton: {
     backgroundColor: colors.primary,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 8,
+    borderRadius: 25,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   continueButtonText: {
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
   },
-}); 
+});

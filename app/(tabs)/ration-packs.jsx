@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import colors from '../constants/colors';
@@ -41,7 +47,7 @@ export default function RationPacks() {
 
   const toggleItem = (itemId) => {
     if (selectedItems.includes(itemId)) {
-      setSelectedItems(selectedItems.filter(id => id !== itemId));
+      setSelectedItems(selectedItems.filter((id) => id !== itemId));
     } else {
       setSelectedItems([...selectedItems, itemId]);
     }
@@ -49,21 +55,21 @@ export default function RationPacks() {
 
   const getTotalPrice = () => {
     return selectedItems.reduce((total, id) => {
-      const item = availableItems.find(item => item.id === id);
+      const item = availableItems.find((item) => item.id === id);
       return total + (item ? item.price : 0);
     }, 0);
   };
 
   const handleCreateCustomPack = () => {
     if (selectedItems.length === 0) return;
-    
-    const selectedItemNames = selectedItems.map(id => 
-      availableItems.find(item => item.id === id).name
+
+    const selectedItemNames = selectedItems.map(
+      (id) => availableItems.find((item) => item.id === id).name
     );
-    
+
     router.push({
       pathname: '/ration-pack-details',
-      params: { selectedItems: JSON.stringify(selectedItemNames) }
+      params: { selectedItems: JSON.stringify(selectedItemNames) },
     });
   };
 
@@ -227,14 +233,16 @@ export default function RationPacks() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Top Selling Ration Packs</Text>
           <View style={styles.packsList}>
-            {predefinedPacks.map(pack => (
+            {predefinedPacks.map((pack) => (
               <View key={pack.id} style={styles.packCard}>
                 <Text style={styles.packName}>{pack.name}</Text>
                 <Text style={styles.packItems}>{pack.items.join(', ')}</Text>
-                <Text style={styles.packPrice}>₹{pack.price}</Text>
+                <Text style={styles.packPrice}>Rs {pack.price}</Text>
                 <View style={styles.rating}>
                   <MaterialIcons name="star" size={16} color="#FFD700" />
-                  <Text style={{ marginLeft: 4, color: colors.text.secondary }}>{pack.rating}</Text>
+                  <Text style={{ marginLeft: 4, color: colors.text.secondary }}>
+                    {pack.rating}
+                  </Text>
                 </View>
                 <TouchableOpacity style={styles.addToCartButton}>
                   <Text style={styles.addToCartText}>Add to Cart</Text>
@@ -247,7 +255,7 @@ export default function RationPacks() {
         <View style={styles.customizeSection}>
           <Text style={styles.sectionTitle}>Customize your Ration Pack</Text>
           <View style={styles.itemsGrid}>
-            {availableItems.map(item => (
+            {availableItems.map((item) => (
               <TouchableOpacity
                 key={item.id}
                 style={[
@@ -258,7 +266,7 @@ export default function RationPacks() {
               >
                 <Text style={styles.itemIcon}>{item.icon}</Text>
                 <Text style={styles.itemName}>{item.name}</Text>
-                <Text style={styles.itemPrice}>₹{item.price}</Text>
+                <Text style={styles.itemPrice}>Rs {item.price}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -268,12 +276,12 @@ export default function RationPacks() {
       <View style={styles.createButtonContainer}>
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total Price</Text>
-          <Text style={styles.totalPrice}>₹{getTotalPrice()}</Text>
+          <Text style={styles.totalPrice}>Rs {getTotalPrice()}</Text>
         </View>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[
             styles.createButton,
-            selectedItems.length === 0 && { opacity: 0.5 }
+            selectedItems.length === 0 && { opacity: 0.5 },
           ]}
           onPress={handleCreateCustomPack}
           disabled={selectedItems.length === 0}
@@ -283,4 +291,4 @@ export default function RationPacks() {
       </View>
     </View>
   );
-} 
+}

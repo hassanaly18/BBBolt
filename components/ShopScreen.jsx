@@ -14,13 +14,12 @@ import {
 } from 'react-native';
 import { Filter, Search, MapPin, ArrowDown } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Banner from '../../components/Banner';
-import VendorCard from '../../components/VendorCard';
-import SortModal from '../../components/SortModal';
-import { vendorApi } from '../services/api';
-import { useLocation } from '../context/LocationContext';
-import { router } from 'expo-router';
-import theme from '../theme';
+import Banner from '../../../components/Banner';
+import VendorCard from '../../../components/VendorCard';
+import SortModal from '../../../components/SortModal';
+import { vendorApi } from '../../services/api';
+import { useLocation } from '../../context/LocationContext';
+import theme from '../../theme';
 
 const { width } = Dimensions.get('window');
 
@@ -34,7 +33,6 @@ const sortOptions = {
 };
 
 export default function ShopScreen({ navigation }) {
-  // First, declare all state variables
   const [sortBy, setSortBy] = useState('distance');
   const [showSortModal, setShowSortModal] = useState(false);
   const [vendors, setVendors] = useState([]);
@@ -42,10 +40,7 @@ export default function ShopScreen({ navigation }) {
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [filteredVendors, setFilteredVendors] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
   const { location, getCurrentLocation } = useLocation();
-
-  // Then use them in your useEffects and other code
 
   const scrollY = new Animated.Value(0);
 
@@ -84,6 +79,8 @@ export default function ShopScreen({ navigation }) {
       setFilteredVendors(filtered);
     }
   }, [searchQuery, vendors]);
+
+  const [searchQuery, setSearchQuery] = useState('');
 
   const initializeScreen = async () => {
     try {
@@ -185,7 +182,10 @@ export default function ShopScreen({ navigation }) {
   const renderHeader = () => {
     return (
       <Animated.View
-        style={[styles.header, { opacity: headerOpacity, marginBottom: '10' }]}
+        style={[
+          styles.header,
+          { height: headerHeight, opacity: headerOpacity },
+        ]}
       >
         <StatusBar barStyle="light-content" />
         <View style={styles.headerContent}>
@@ -219,7 +219,11 @@ export default function ShopScreen({ navigation }) {
     <View style={styles.searchAndFilterContainer}>
       <TouchableOpacity
         style={styles.searchBar}
-        onPress={() => router.push('/search')}
+        onPress={() => {
+          // Placeholder for future search functionality
+          // You could navigate to a search screen or open a modal
+          console.log('Search pressed');
+        }}
       >
         <Search size={20} color={theme.colors.text.secondary} />
         <Text style={styles.searchText}>Search vendors...</Text>
@@ -329,8 +333,7 @@ export default function ShopScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <>
-            {/* <Banner /> */}
-
+            <Banner />
             {renderSearchAndFilter()}
             {filteredVendors.length > 0 && renderSortIndicator()}
           </>
@@ -379,7 +382,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     overflow: 'hidden',
     position: 'absolute',
-
     top: 0,
     left: 0,
     right: 0,
@@ -439,7 +441,6 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   searchBar: {
-    marginTop: '40',
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -459,7 +460,6 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.body2.fontSize,
   },
   filterButton: {
-    marginTop: '40',
     backgroundColor: theme.colors.background.paper,
     borderRadius: theme.borderRadius.md,
     padding: theme.spacing.sm,
