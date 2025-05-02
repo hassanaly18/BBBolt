@@ -17,6 +17,7 @@ import {
   Dimensions,
   StatusBar,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Trash2,
@@ -29,6 +30,8 @@ import {
   ChevronRight,
   X,
 } from 'lucide-react-native';
+
+
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -59,7 +62,7 @@ export default function CartScreen() {
   } = useCart();
 
   const { createOrder, loading: orderLoading, createDirectOrder } = useOrder();
-
+  const isFocused = useIsFocused();
   const [groupedItems, setGroupedItems] = useState({});
   const [refreshing, setRefreshing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -110,12 +113,16 @@ export default function CartScreen() {
   // Calculate distance between two coordinates using Haversine formula
   const calculateDistance = (vendorLoc) => {
     try {
-      if (!vendorLoc || !location) return 'Unknown distance';
-
       // Parse coordinates from vendor location and user location
       const vendorCoords = parseCoordinates(vendorLoc);
-      const userCoords = parseCoordinates(location);
+      const userCoords = location ? parseCoordinates(location) : null;
+console.log(
+ 
+  vendorCoords,
+  userCoords
 
+
+)
       if (!vendorCoords || !userCoords) {
         return 'Unknown distance';
       }
@@ -192,9 +199,8 @@ export default function CartScreen() {
 
       if (!acc[vendorId]) {
         // Calculate vendor distance if location data is available
-        const distance = vendorLocation
-          ? calculateDistance(vendorLocation)
-          : 'Unknown distance';
+        const distance =  calculateDistance(vendorLocation)
+         
 
         acc[vendorId] = {
           vendorId,
@@ -207,8 +213,9 @@ export default function CartScreen() {
         };
       }
 
-      acc[vendorId].items.push(item);
-      acc[vendorId].subtotal += item.price * item.quantity;
+      acc[vendorId].items.push(item); 
+      acc[vendorId].subtotal += item.finalPrice * item.quantity;
+
 
       return acc;
     }, {});
@@ -231,7 +238,11 @@ export default function CartScreen() {
       }, 100);
     }
   }, [phoneModalVisible]);
-
+  useEffect(() => {
+    if (isFocused) {
+      fetchCart();
+    }
+  }, [isFocused]);
   // Refresh cart data
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -321,35 +332,40 @@ export default function CartScreen() {
   };
 
   // Handle direct order
+  // const handleDirectOrder = (vendorId) => {
+  //   if (!isLoggedIn) {
+  //     Alert.alert('Login Required', 'Please login to continue with checkout', [
+  //       { text: 'Cancel', style: 'cancel' },
+  //       { text: 'Login', onPress: () => router.push('/login') },
+  //     ]);
+  //     return;
+  //   }
+
+  //   // Get vendor items
+  //   const vendorData = groupedItems[vendorId];
+  //   if (!vendorData || vendorData.items.length === 0) return;
+
+  //   // Check if we have a location for delivery
+  //   if (!location) {
+  //     Alert.alert(
+  //       'Location Required',
+  //       'Please set your delivery location before placing an order.',
+  //       [
+  //         { text: 'Cancel', style: 'cancel' },
+  //         { text: 'Set Location', onPress: () => router.push('/location') },
+  //       ]
+  //     );
+  //     return;
+  //   }
+
+  //   // Show phone input modal
+  //   setSelectedVendorId(vendorId);
+  //   setPhoneModalVisible(true);
+  // };
   const handleDirectOrder = (vendorId) => {
-    if (!isLoggedIn) {
-      Alert.alert('Login Required', 'Please login to continue with checkout', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Login', onPress: () => router.push('/login') },
-      ]);
-      return;
-    }
-
-    // Get vendor items
     const vendorData = groupedItems[vendorId];
-    if (!vendorData || vendorData.items.length === 0) return;
-
-    // Check if we have a location for delivery
-    if (!location) {
-      Alert.alert(
-        'Location Required',
-        'Please set your delivery location before placing an order.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Set Location', onPress: () => router.push('/location') },
-        ]
-      );
-      return;
-    }
-
-    // Show phone input modal
-    setSelectedVendorId(vendorId);
-    setPhoneModalVisible(true);
+    // skip the phone‐modal and go straight to order
+    processDirectOrder(vendorId, user.phone || '0000000000');
   };
 
   // Handle phone input submission
@@ -367,121 +383,140 @@ export default function CartScreen() {
 
   // Update your processDirectOrder function in cart.jsx
 
-  const processDirectOrder = async (vendorId, contactPhone) => {
-    const vendorData = groupedItems[vendorId];
-    setIsProcessing(true);
+// Updated processDirectOrder function to fix pricing issues
+const processDirectOrder = async (vendorId, contactPhone) => {
+  console.log("processing direct order");
+  const vendorData = groupedItems[vendorId];
+  setIsProcessing(true);
 
-    try {
-      // Format the delivery address
-      let deliveryAddress;
-      if (location.formattedAddress) {
-        deliveryAddress = {
-          coordinates: parseCoordinates(location),
-          formattedAddress: location.formattedAddress,
-          type: 'Point',
-        };
-      } else {
-        // Create an address object from coordinates
-        deliveryAddress = {
-          coordinates: parseCoordinates(location),
-          formattedAddress: 'Current Location',
-          type: 'Point',
-        };
-      }
-
-      // Helper function to ensure we have a clean number
-      const cleanNumber = (value) => {
-        if (typeof value === 'number') return value;
-        if (typeof value === 'string') {
-          // Remove currency symbols, spaces, and non-numeric characters except decimal points
-          const cleaned = value.replace(/[^0-9.]/g, '');
-          return parseFloat(cleaned);
-        }
-        return 0;
+  try {
+    // Format the delivery address
+    let deliveryAddress;
+    if (location.formattedAddress) {
+      deliveryAddress = {
+        coordinates: parseCoordinates(location),
+        formattedAddress: location.formattedAddress,
+        type: 'Point',
       };
-
-      // Calculate item totals properly
-      const items = vendorData.items.map((item) => {
-        const cleanPrice = cleanNumber(item.price);
-        return {
-          vendorProductId: item.id,
-          quantity: item.quantity,
-          price: cleanPrice,
-          totalPrice: cleanPrice * item.quantity,
-        };
-      });
-
-      // Calculate subtotal correctly from the cleaned item prices
-      const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
-
-      // Fixed delivery fee
-      const deliveryFee = 40;
-
-      // Calculate total
-      const total = subtotal + deliveryFee;
-
-      // Prepare order data
-      const orderData = {
-        items,
-        deliveryAddress,
-        contactPhone,
-        paymentMethod: 'cash_on_delivery',
-        customerNotes: 'Order placed from cart screen',
-        subtotal,
-        deliveryFee,
-        total,
+    } else {
+      // Create an address object from coordinates
+      deliveryAddress = {
+        coordinates: parseCoordinates(location),
+        type: 'Point',
+        formattedAddress: 'Current Location',
       };
-
-      console.log('Sending order data:', JSON.stringify(orderData));
-
-      // Use the new createDirectOrder method instead of createOrder
-      const orderResponse = await createDirectOrder(orderData);
-
-      console.log('Order response:', orderResponse);
-
-      if (orderResponse) {
-        // Remove ordered items from cart
-        for (const item of vendorData.items) {
-          await removeFromCart(item.id);
-        }
-
-        // Show success message
-        Alert.alert(
-          'Order Placed Successfully',
-          `Your order from ${vendorData.vendorName} has been placed successfully!`,
-          [
-            {
-              text: 'View Order',
-              onPress: () =>
-                router.push({
-                  pathname: '/orders/[id]',
-                  params: { id: orderResponse.id || orderResponse._id },
-                }),
-            },
-          ]
-        );
-      }
-    } catch (error) {
-      console.error('Error creating order:', error);
-
-      // More detailed error message
-      let errorMessage =
-        'There was an error creating your order. Please try again.';
-      if (
-        error.response &&
-        error.response.data &&
-        error.response.data.message
-      ) {
-        errorMessage = error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
-      Alert.alert('Order Failed', errorMessage);
-    } finally {
-      setIsProcessing(false);
     }
-  };
+
+    // Helper function to ensure we have a clean number
+    const cleanNumber = (ps) => {
+      if (!ps) return 0;
+      if (typeof ps === 'number') return ps;
+      const m = String(ps).match(/[\d,]+/);
+      return m ? parseInt(m[0].replace(/,/g, ''), 10) : 0;
+    };
+
+    // Calculate item totals properly with discounts applied
+    const items = vendorData.items.map((item) => {
+      // Always use finalPrice which already has the discount applied
+      const discountedPrice = cleanNumber(item.finalPrice);
+      
+      return {
+        vendorProductId: item.id,
+        quantity: item.quantity,
+        // CRITICAL: Send the discounted price as the price field
+        price: discountedPrice,
+        // Send original price for reference
+        originalPrice: cleanNumber(item.originalPrice),
+        discountType: item.discountType,
+        discountValue: item.discountValue,
+        // Calculate total price using the discounted price
+        totalPrice: discountedPrice * item.quantity,
+      };
+    });
+
+    // Calculate subtotal correctly from the discounted prices
+    const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+
+    // Fixed delivery fee
+    const deliveryFee = 40;
+
+    // Calculate total with the correct subtotal
+    const total = subtotal + deliveryFee;
+
+    console.log('Order summary:', {
+      items: items.map(i => ({
+        name: vendorData.items.find(vi => vi.id === i.vendorProductId)?.name,
+        quantity: i.quantity,
+        price: i.price,
+        totalPrice: i.totalPrice
+      })),
+      subtotal,
+      deliveryFee,
+      total
+    });
+
+    // Prepare order data
+    const orderData = {
+      items,
+      deliveryAddress,
+      contactPhone,
+      paymentMethod: 'cash_on_delivery',
+      customerNotes: 'Order placed from cart screen',
+      subtotal,
+      deliveryFee,
+      total,
+    };
+
+    console.log('Sending order data:', JSON.stringify(orderData));
+
+    // Use the new createDirectOrder method
+    const orderResponse = await createDirectOrder(orderData);
+
+    console.log('Order response:', orderResponse);
+
+    if (orderResponse) {
+      // Remove ordered items from cart
+      for (const item of vendorData.items) {
+        await removeFromCart(item.id);
+      }
+
+      // Show success message
+      Alert.alert(
+        'Order Placed Successfully',
+        `Your order from ${vendorData.vendorName} has been placed successfully!`,
+        [
+          {
+            text: 'View Order',
+            onPress: () =>
+              router.push({
+                pathname: '/orders/[id]',
+                params: { id: orderResponse.id || orderResponse._id },
+              }),
+          },
+        ]
+      );
+    }
+  } catch (error) {
+    console.error('Error creating order:', error);
+
+    // More detailed error message
+    let errorMessage =
+      'There was an error creating your order. Please try again.';
+    if (
+      error.response &&
+      error.response.data &&
+      error.response.data.message
+    ) {
+      errorMessage = error.response.data.message;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
+    Alert.alert('Order Failed', errorMessage);
+  } finally {
+    setIsProcessing(false);
+  }
+};
   // Render cart empty state
   const renderEmptyCart = () => (
     <View style={styles.emptyContainer}>
@@ -529,9 +564,20 @@ export default function CartScreen() {
         </Text>
 
         <View style={styles.itemFooter}>
-          <Text style={styles.itemPrice}>
-            Rs. {item.price.toLocaleString()}
-          </Text>
+  {item.discountType && item.discountValue ? (
+    <View>
+      <Text style={styles.itemOriginalPrice}>
+        Rs. {item.originalPrice.toLocaleString()}
+      </Text>
+      <Text style={styles.itemPrice}>
+        Rs. {item.finalPrice.toLocaleString()}
+      </Text>
+    </View>
+  ) : (
+    <Text style={styles.itemPrice}>
+      Rs. {item.price.toLocaleString()}
+    </Text>
+  )}
 
           <View style={styles.quantityControl}>
             <TouchableOpacity
@@ -857,6 +903,15 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     marginTop: 24,
     overflow: 'hidden',
+  },
+  itemOriginalPrice: {
+    ...theme.typography.caption,
+    color: theme.colors.text.secondary,
+    textDecorationLine: 'line-through',
+  },
+  itemPrice: {
+    ...theme.typography.subtitle1, 
+    color: theme.colors.primary.main,
   },
   shopButtonGradient: {
     width: '100%',

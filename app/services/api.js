@@ -75,6 +75,7 @@ export const customerApi = {
     api.get('/customers/search-nearby-vendors-products', { params }),
   priceComparison: (params) =>
     api.get('/customers/price-comparison', { params }),
+  createRationPack: (data) => api.post('/customers/ration-packs', data),
 };
 
 // Products API endpoints
@@ -86,7 +87,7 @@ export const productApi = {
   getProductsBySubCategory: (subCategoryId) =>
     api.get(`/products/sub-category/${subCategoryId}`),
   searchProducts: (keyword) => api.get(`/products/search/${keyword}`),
-};
+}
 
 // Vendor Products API endpoints
 export const vendorProductApi = {
@@ -116,6 +117,8 @@ export const categoryApi = {
   getAllSubCategories: () => api.get('/subcategories'),
   getSubCategoriesByCategory: (categoryId) =>
     api.get(`/subcategories/by-category/${categoryId}`),
+  getProductsBySubCategory: (subCategoryId) =>
+    api.get(`/products/sub-category/${subCategoryId}`),
 };
 
 // Cart API endpoints

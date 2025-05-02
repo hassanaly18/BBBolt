@@ -211,14 +211,35 @@ export default function OrdersScreen() {
 
       <View style={styles.itemsContainer}>
         {item.items.slice(0, 3).map((product, index) => (
-          <View key={index} style={styles.itemRow}>
-            <Text style={styles.itemName} numberOfLines={1}>
-              {product.quantity}x {product.name}
-            </Text>
-            <Text style={styles.itemPrice}>
-              Rs {(product.price * product.quantity).toFixed(2)}
-            </Text>
-          </View>
+          // <View key={index} style={styles.itemRow}>
+          //   <Text style={styles.itemName} numberOfLines={1}>
+          //     {product.quantity}x {product.name}
+          //   </Text>
+          //   <Text style={styles.itemPrice}>
+          //     Rs {(product.price * product.quantity).toFixed(2)}
+          //   </Text>
+          // </View>
+          // Update the item rendering in orders.jsx
+<View key={index} style={styles.itemRow}>
+  <Text style={styles.itemName} numberOfLines={1}>
+    {product.quantity}x {product.name}
+  </Text>
+  
+  {product.discountType && product.discountValue ? (
+    <View>
+      <Text style={styles.itemOriginalPrice}>
+        Rs {(product.originalPrice * product.quantity).toFixed(2)}
+      </Text>
+      <Text style={styles.itemPrice}>
+        Rs {(product.price * product.quantity).toFixed(2)}
+      </Text>
+    </View>
+  ) : (
+    <Text style={styles.itemPrice}>
+      Rs {(product.price * product.quantity).toFixed(2)}
+    </Text>
+  )}
+</View>
         ))}
 
         {item.items.length > 3 && (
@@ -388,6 +409,19 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
+  // Add these styles to your StyleSheet in orders.jsx
+itemOriginalPrice: {
+  fontSize: 12,
+  color: colors.text.secondary,
+  textDecorationLine: 'line-through',
+  textAlign: 'right',
+},
+itemPrice: {
+  fontSize: 14,
+  color: colors.primary,
+  fontWeight: '500',
+  textAlign: 'right',
+},
   storeName: {
     fontSize: 14,
     color: colors.text.primary,

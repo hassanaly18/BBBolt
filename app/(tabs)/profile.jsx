@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
-import colors from '../constants/colors';
+import theme from '../theme';
 import {
   User,
   Mail,
@@ -20,6 +20,7 @@ import {
   ChevronRight,
   LogOut,
   Edit3,
+  AlertCircle,
 } from 'lucide-react-native';
 import * as Location from 'expo-location';
 
@@ -31,6 +32,7 @@ export default function ProfileScreen() {
     phone: user?.phone || '',
     address: user?.location?.formattedAddress || '',
   });
+  const [errors, setErrors] = useState({});
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
 
   const handleEdit = () => {
@@ -39,14 +41,38 @@ export default function ProfileScreen() {
       phone: user?.phone || '',
       address: user?.location?.formattedAddress || '',
     });
+    setErrors({});
     setIsEditing(true);
   };
 
   const handleCancel = () => {
     setIsEditing(false);
+    setErrors({});
+  };
+
+  // Validate form data
+  const validateForm = () => {
+    const newErrors = {};
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required';
+    }
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    }
+    if (!formData.address.trim()) {
+      newErrors.address = 'Address is required';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSave = async () => {
+    // Validate form data
+    if (!validateForm()) {
+      return;
+    }
+
     try {
       await updateProfile({
         name: formData.name,
@@ -123,6 +149,11 @@ export default function ProfileScreen() {
           ...formData,
           address: formattedAddress,
         });
+        
+        // Clear any address error when we successfully detect location
+        if (errors.address) {
+          setErrors({ ...errors, address: undefined });
+        }
       }
     } catch (error) {
       console.error('Error getting location:', error);
@@ -142,7 +173,7 @@ export default function ProfileScreen() {
   if (loading || !user) {
     return (
       <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={theme.colors.primary.main} />
       </View>
     );
   }
@@ -155,76 +186,116 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.formContainer}>
-          <View style={styles.inputContainer}>
+          <View style={[
+            styles.inputContainer, 
+            errors.name ? styles.inputError : null
+          ]}>
             <User
               size={20}
-              color={colors.text.secondary}
+              color={errors.name ? theme.colors.error : theme.colors.text.secondary}
               style={styles.inputIcon}
             />
             <TextInput
               style={styles.input}
               placeholder="Full Name"
               value={formData.name}
-              onChangeText={(text) => setFormData({ ...formData, name: text })}
-              placeholderTextColor={colors.text.inactive}
+              onChangeText={(text) => {
+                setFormData({ ...formData, name: text });
+                if (text.trim() && errors.name) {
+                  setErrors({ ...errors, name: undefined });
+                }
+              }}
+              placeholderTextColor={theme.colors.text.hint}
             />
+            {errors.name && (
+              <AlertCircle size={20} color={theme.colors.error} />
+            )}
           </View>
+          {errors.name && (
+            <Text style={styles.errorText}>{errors.name}</Text>
+          )}
 
           <View style={styles.inputContainer}>
             <Mail
               size={20}
-              color={colors.text.secondary}
+              color={theme.colors.info.main}
               style={styles.inputIcon}
             />
             <TextInput
               style={styles.input}
               value={user.email}
               editable={false}
-              placeholderTextColor={colors.text.inactive}
+              placeholderTextColor={theme.colors.text.hint}
             />
           </View>
 
-          <View style={styles.inputContainer}>
+          <View style={[
+              styles.inputContainer,
+              errors.phone ? styles.inputError : null
+            ]}>
             <Phone
               size={20}
-              color={colors.text.secondary}
+              color={errors.phone ? theme.colors.error : theme.colors.text.secondary}
               style={styles.inputIcon}
             />
             <TextInput
               style={styles.input}
-              placeholder="Phone Number (Optional)"
+              placeholder="Phone Number"
               keyboardType="phone-pad"
               value={formData.phone}
-              onChangeText={(text) => setFormData({ ...formData, phone: text })}
-              placeholderTextColor={colors.text.inactive}
+              onChangeText={(text) => {
+                setFormData({ ...formData, phone: text });
+                if (text.trim() && errors.phone) {
+                  setErrors({ ...errors, phone: undefined });
+                }
+              }}
+              placeholderTextColor={theme.colors.text.hint}
             />
+            {errors.phone && (
+              <AlertCircle size={20} color={theme.colors.error} />
+            )}
           </View>
+          {errors.phone && (
+            <Text style={styles.errorText}>{errors.phone}</Text>
+          )}
 
           <View style={styles.locationContainer}>
-            <View style={styles.inputContainer}>
+            <View style={[
+              styles.inputContainer,
+              errors.address ? styles.inputError : null
+            ]}>
               <MapPin
                 size={20}
-                color={colors.text.secondary}
+                color={errors.address ? theme.colors.error : theme.colors.text.secondary}
                 style={styles.inputIcon}
               />
               <TextInput
                 style={styles.input}
                 placeholder="Your Address"
                 value={formData.address}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, address: text })
-                }
-                placeholderTextColor={colors.text.inactive}
+                onChangeText={(text) => {
+                  setFormData({ ...formData, address: text });
+                  if (text.trim() && errors.address) {
+                    setErrors({ ...errors, address: undefined });
+                  }
+                }}
+                placeholderTextColor={theme.colors.text.hint}
                 multiline
               />
+              {errors.address && (
+                <AlertCircle size={20} color={theme.colors.error} />
+              )}
             </View>
+            {errors.address && (
+              <Text style={styles.errorText}>{errors.address}</Text>
+            )}
             <TouchableOpacity
               style={styles.detectButton}
               onPress={detectCurrentLocation}
               disabled={isDetectingLocation}
             >
               {isDetectingLocation ? (
-                <ActivityIndicator size="small" color="#FFF" />
+                <ActivityIndicator size="small" color={theme.colors.primary.contrastText} />
               ) : (
                 <Text style={styles.detectButtonText}>Detect Location</Text>
               )}
@@ -245,7 +316,7 @@ export default function ProfileScreen() {
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator size="small" color="#FFF" />
+                <ActivityIndicator size="small" color={theme.colors.primary.contrastText} />
               ) : (
                 <Text style={styles.saveButtonText}>Save</Text>
               )}
@@ -280,7 +351,7 @@ export default function ProfileScreen() {
         </View>
 
         <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-          <Edit3 size={20} color={colors.primary} />
+          <Edit3 size={20} color={theme.colors.primary.main} />
           <Text style={styles.editButtonText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
@@ -290,7 +361,7 @@ export default function ProfileScreen() {
 
         <View style={styles.infoItem}>
           <View style={styles.infoIconContainer}>
-            <Mail size={20} color={colors.primary} />
+            <Mail size={20} color={theme.colors.primary.main} />
           </View>
           <View style={styles.infoContent}>
             <Text style={styles.infoLabel}>Email</Text>
@@ -300,7 +371,7 @@ export default function ProfileScreen() {
 
         <View style={styles.infoItem}>
           <View style={styles.infoIconContainer}>
-            <Phone size={20} color={colors.primary} />
+            <Phone size={20} color={theme.colors.primary.main} />
           </View>
           <View style={styles.infoContent}>
             <Text style={styles.infoLabel}>Phone</Text>
@@ -310,7 +381,7 @@ export default function ProfileScreen() {
 
         <View style={styles.infoItem}>
           <View style={styles.infoIconContainer}>
-            <MapPin size={20} color={colors.primary} />
+            <MapPin size={20} color={theme.colors.primary.main} />
           </View>
           <View style={styles.infoContent}>
             <Text style={styles.infoLabel}>Address</Text>
@@ -322,7 +393,7 @@ export default function ProfileScreen() {
       </View>
 
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <LogOut size={20} color="#FF4D4F" />
+        <LogOut size={20} color={theme.colors.error} />
         <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -332,224 +403,242 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.main,
+    backgroundColor: theme.colors.background.default,
   },
   centerContent: {
     justifyContent: 'center',
     alignItems: 'center',
   },
   header: {
-    backgroundColor: colors.background.white,
-    padding: 16,
+    backgroundColor: theme.colors.background.paper,
+    padding: theme.spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: theme.colors.divider,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text.primary,
+    fontSize: theme.typography.h3.fontSize,
+    fontWeight: theme.typography.h3.fontWeight,
+    color: theme.colors.text.primary,
   },
   profileSection: {
-    backgroundColor: colors.background.white,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: theme.colors.background.paper,
+    marginTop: theme.spacing.md,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    marginHorizontal: theme.spacing.md,
+    ...getShadow(theme.shadows.md),
   },
   avatarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: theme.spacing.md,
   },
   avatar: {
     width: 70,
     height: 70,
-    borderRadius: 35,
-    backgroundColor: colors.primary,
+    borderRadius: theme.borderRadius.circle,
+    backgroundColor: theme.colors.primary.main,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: theme.spacing.md,
   },
   avatarText: {
     fontSize: 30,
     fontWeight: 'bold',
-    color: '#FFF',
+    color: theme.colors.primary.contrastText,
   },
   userInfo: {
     flex: 1,
   },
   userName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-    marginBottom: 4,
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.h4.fontWeight,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing.xs,
   },
   verifiedBadge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    backgroundColor: theme.colors.success.main,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs / 2,
+    borderRadius: theme.borderRadius.xs,
     alignSelf: 'flex-start',
   },
   verifiedText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '500',
+    color: theme.colors.primary.contrastText,
+    fontSize: theme.typography.caption.fontSize,
+    fontWeight: theme.typography.caption.fontWeight,
   },
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: theme.spacing.sm,
     borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 8,
-    marginTop: 8,
+    borderColor: theme.colors.primary.main,
+    borderRadius: theme.borderRadius.sm,
+    marginTop: theme.spacing.sm,
   },
   editButtonText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
+    color: theme.colors.primary.main,
+    fontSize: theme.typography.subtitle1.fontSize,
+    fontWeight: theme.typography.subtitle1.fontWeight,
+    marginLeft: theme.spacing.sm,
   },
   infoSection: {
-    backgroundColor: colors.background.white,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: theme.colors.background.paper,
+    marginTop: theme.spacing.md,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    marginHorizontal: theme.spacing.md,
+    ...getShadow(theme.shadows.md),
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-    marginBottom: 16,
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.h4.fontWeight,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing.md,
   },
   infoItem: {
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: theme.spacing.md,
   },
   infoIconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.background.main,
+    borderRadius: theme.borderRadius.circle,
+    backgroundColor: 'rgba(77, 33, 109, 0.08)', // Using the primary color with reduced opacity
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: theme.spacing.sm,
   },
   infoContent: {
     flex: 1,
     justifyContent: 'center',
   },
   infoLabel: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginBottom: 2,
+    fontSize: theme.typography.caption.fontSize,
+    color: theme.colors.text.secondary,
+    marginBottom: theme.spacing.xs / 2,
   },
   infoValue: {
-    fontSize: 16,
-    color: colors.text.primary,
+    fontSize: theme.typography.body1.fontSize,
+    color: theme.colors.text.primary,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF',
-    marginTop: 16,
-    marginHorizontal: 16,
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: theme.colors.background.paper,
+    marginTop: theme.spacing.md,
+    marginHorizontal: theme.spacing.md,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
-    borderColor: '#FF4D4F',
-    marginBottom: 40,
+    borderColor: theme.colors.error,
+    marginBottom: theme.spacing.xxl,
   },
   logoutText: {
-    color: '#FF4D4F',
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
+    color: theme.colors.error,
+    fontSize: theme.typography.subtitle1.fontSize,
+    fontWeight: theme.typography.subtitle1.fontWeight,
+    marginLeft: theme.spacing.sm,
   },
   formContainer: {
-    padding: 16,
+    padding: theme.spacing.md,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background.white,
-    borderRadius: 12,
-    marginBottom: 16,
-    paddingHorizontal: 16,
+    backgroundColor: theme.colors.background.paper,
+    borderRadius: theme.borderRadius.md,
+    marginBottom: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
     minHeight: 56,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.colors.text.hint,
+  },
+  inputError: {
+    borderColor: theme.colors.error,
+    borderWidth: 1,
+  },
+  errorText: {
+    color: theme.colors.error,
+    fontSize: theme.typography.caption.fontSize,
+    marginBottom: theme.spacing.sm,
+    marginLeft: theme.spacing.md,
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: theme.spacing.sm,
   },
   input: {
     flex: 1,
     minHeight: 56,
-    color: colors.text.primary,
-    fontSize: 16,
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.body1.fontSize,
   },
   locationContainer: {
-    marginBottom: 16,
+    marginBottom: theme.spacing.md,
   },
   detectButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
+    backgroundColor: theme.colors.primary.main,
+    borderRadius: theme.borderRadius.sm,
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: theme.spacing.sm,
   },
   detectButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
+    color: theme.colors.primary.contrastText,
+    fontSize: theme.typography.button.fontSize,
+    fontWeight: theme.typography.button.fontWeight,
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: colors.background.white,
+    backgroundColor: theme.colors.background.paper,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
+    borderColor: theme.colors.text.hint,
+    borderRadius: theme.borderRadius.md,
     height: 56,
     justifyContent: 'center',
     alignItems: 'center',
   },
   cancelButtonText: {
-    color: colors.text.primary,
-    fontSize: 16,
-    fontWeight: '600',
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.subtitle1.fontSize,
+    fontWeight: theme.typography.subtitle1.fontWeight,
   },
   saveButton: {
     flex: 1,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
+    backgroundColor: theme.colors.primary.main,
+    borderRadius: theme.borderRadius.md,
     height: 56,
     justifyContent: 'center',
     alignItems: 'center',
   },
   saveButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+    color: theme.colors.primary.contrastText,
+    fontSize: theme.typography.subtitle1.fontSize,
+    fontWeight: theme.typography.subtitle1.fontWeight,
   },
 });
+
+// Helper function to parse shadow values from theme
+function getShadow(shadowString) {
+  if (shadowString === 'none') {
+    return {};
+  }
+  
+  // Basic shadow for React Native
+  return {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  };
+}

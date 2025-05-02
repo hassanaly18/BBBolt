@@ -551,7 +551,7 @@ export default function ProductDetails() {
             <View style={styles.divider} />
 
             {/* Quantity Selector */}
-            <View style={styles.quantitySection}>
+            {/* <View style={styles.quantitySection}>
               <Text style={styles.sectionTitle}>Quantity</Text>
               <View style={styles.quantitySelector}>
                 <TouchableOpacity
@@ -577,7 +577,7 @@ export default function ProductDetails() {
                   <Plus size={18} color={theme.colors.primary.main} />
                 </TouchableOpacity>
               </View>
-            </View>
+            </View> */}
 
             <View style={styles.divider} />
 
@@ -970,7 +970,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.divider,
     paddingTop: 8,
-    marginTop: -1, // Fix border overlap
+    marginTop: 20, // Fix border overlap
   },
   tabItem: {
     flex: 1,
