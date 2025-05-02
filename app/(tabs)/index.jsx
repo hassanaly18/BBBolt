@@ -124,11 +124,19 @@ export default function HomeScreen() {
   };
 
   // Utility: format price
-  const extractPrice = (str) => {
-    if (typeof str === 'number') return str;
-    const m = String(str).match(/\d+/);
-    return m ? parseInt(m[0], 10) : 0;
+  // const extractPrice = (str) => {
+  //   if (typeof str === 'number') return str;
+  //   const m = String(str).match(/\d+/);
+  //   return m ? parseInt(m[0], 10) : 0;
+  // };
+
+  const extractPrice = (ps) => {
+    if (!ps) return 0;
+    if (typeof ps === 'number') return ps;
+    const m = String(ps).match(/[\d,]+/);
+    return m ? parseInt(m[0].replace(/,/g, ''), 10) : 0;
   };
+
 
   // Parse coordinates from different possible formats
   const parseCoordinates = (locData) => {

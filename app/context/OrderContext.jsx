@@ -32,28 +32,43 @@ export function OrderProvider({ children }) {
       const response = await orderApi.getOrders();
 
       // Transform orders to match the format expected by the frontend
-      const transformedOrders =
-        response.data.orders?.map((order) => ({
-          id: order._id || order.id,
-          orderNumber: order.orderNumber,
-          date: new Date(order.createdAt || order.date)
-            .toISOString()
-            .split('T')[0],
-          status: order.status,
-          total: order.total,
-          items: order.items.map((item) => ({
-            id: item.product._id || item.product.id,
-            name: item.product.title || item.product.name,
-            price: item.price,
-            quantity: item.quantity,
-            image: item.product.imageUrl || item.product.image,
-          })),
-          store: order.items[0]?.vendor?.name || 'Unknown Store',
-          deliveryAddress: order.deliveryAddress?.formattedAddress || '',
-          contactPhone: order.contactPhone,
-          paymentMethod: order.paymentMethod,
-          customerNotes: order.customerNotes,
-        })) || [];
+      const transformedOrders = response.data.orders?.map((order) => ({
+        id: order._id || order.id,
+        orderNumber: order.orderNumber,
+        date: new Date(order.createdAt || order.date)
+          .toISOString()
+          .split('T')[0],
+        status: order.status,
+        total: order.total,
+// after
+items: order.items.map(item => {
+  const basePrice = item.price;
+  let finalPrice = basePrice;
+
+  if (item.discountType === 'percentage') {
+    finalPrice = basePrice * (1 - item.discountValue / 100);
+  } else if (item.discountType === 'amount') {
+    finalPrice = Math.max(0, basePrice - item.discountValue);
+  }
+
+  return {
+    id: item.product._id || item.product.id,
+    name: item.product.title || item.product.name,
+    originalPrice: parseFloat(basePrice.toFixed(2)),
+    price: parseFloat(finalPrice.toFixed(2)),
+    discountType: item.discountType || null,
+    discountValue: item.discountValue || 0,
+    quantity: item.quantity,
+    image: item.product.imageUrl || item.product.image,
+  };
+})
+,
+        store: order.items[0]?.vendor?.name || 'Unknown Store',
+        deliveryAddress: order.deliveryAddress?.formattedAddress || '',
+        contactPhone: order.contactPhone,
+        paymentMethod: order.paymentMethod,
+        customerNotes: order.customerNotes,
+      })) || [];
 
       setOrders(transformedOrders);
     } catch (err) {
@@ -84,13 +99,28 @@ export function OrderProvider({ children }) {
           .split('T')[0],
         status: order.status,
         total: order.total,
-        items: order.items.map((item) => ({
-          id: item.product._id || item.product.id,
-          name: item.product.title || item.product.name,
-          price: item.price,
-          quantity: item.quantity,
-          image: item.product.imageUrl || item.product.image,
-        })),
+// after
+items: order.items.map(item => {
+  const basePrice = item.price;
+  let finalPrice = basePrice;
+
+  if (item.discountType === 'percentage') {
+    finalPrice = basePrice * (1 - item.discountValue / 100);
+  } else if (item.discountType === 'amount') {
+    finalPrice = Math.max(0, basePrice - item.discountValue);
+  }
+
+  return {
+    id: item.product._id || item.product.id,
+    name: item.product.title || item.product.name,
+    originalPrice: parseFloat(basePrice.toFixed(2)),
+    price: parseFloat(finalPrice.toFixed(2)),
+    discountType: item.discountType || null,
+    discountValue: item.discountValue || 0,
+    quantity: item.quantity,
+    image: item.product.imageUrl || item.product.image,
+  };
+}),
         store: order.items[0]?.vendor?.name || 'Unknown Store',
         deliveryAddress: order.deliveryAddress?.formattedAddress || '',
         contactPhone: order.contactPhone,
@@ -109,49 +139,144 @@ export function OrderProvider({ children }) {
   };
 
   // Create a new order
-  const createOrder = async (orderData) => {
-    if (!isLoggedIn) return null;
+// Create a new order
+// Updated createDirectOrder function in OrderContext.jsx
+const createOrder = async (orderData) => {
+  if (!isLoggedIn) return null;
 
-    try {
-      setLoading(true);
-      setError(null);
+  try {
+    setLoading(true);
+    setError(null);
 
-      const response = await orderApi.createOrder(orderData);
+    // Debug log incoming data
+    console.log('Creating direct order with data:', JSON.stringify({
+      items: orderData.items.map(i => ({
+        price: i.price,
+        quantity: i.quantity,
+        totalPrice: i.totalPrice
+      })),
+      subtotal: orderData.subtotal,
+      deliveryFee: orderData.deliveryFee,
+      total: orderData.total
+    }));
 
-      // Refresh orders after creating a new one
-      await fetchOrders();
-
-      return response.data;
-    } catch (err) {
-      console.error('Error creating order:', err);
-      setError(err.response?.data?.message || 'Failed to create order');
-      return null;
-    } finally {
-      setLoading(false);
+    // Ensure all item properties are correctly set
+    if (orderData.items) {
+      orderData.items = orderData.items.map(item => ({
+        ...item,
+        // Ensure discount information is included
+        discountType: item.discountType || null,
+        discountValue: item.discountValue || 0,
+        // Make sure price is the discounted price
+        price: item.price,
+        // Make sure totalPrice is calculated using the discounted price
+        totalPrice: item.price * item.quantity
+      }));
     }
-  };
-  const createDirectOrder = async (orderData) => {
-    if (!isLoggedIn) return null;
 
-    try {
-      setLoading(true);
-      setError(null);
+    // Recalculate subtotal to ensure it's based on the discounted prices
+    const calculatedSubtotal = orderData.items.reduce(
+      (sum, item) => sum + (item.price * item.quantity), 
+      0
+    );
+    
+    // Recalculate total
+    const calculatedTotal = calculatedSubtotal + orderData.deliveryFee;
+    
+    // Override the values to ensure they're correct
+    orderData.subtotal = calculatedSubtotal;
+    orderData.total = calculatedTotal;
 
-      // Use the direct order endpoint instead
-      const response = await orderApi.createDirectOrder(orderData);
+    console.log('Verified order data:', {
+      subtotal: orderData.subtotal,
+      deliveryFee: orderData.deliveryFee,
+      total: orderData.total
+    });
 
-      // Refresh orders after creating a new one
-      await fetchOrders();
+    // Use the direct order endpoint
+    const response = await orderApi.createDirectOrder(orderData);
 
-      return response.data;
-    } catch (err) {
-      console.error('Error creating direct order:', err);
-      setError(err.response?.data?.message || 'Failed to create order');
-      return null;
-    } finally {
-      setLoading(false);
+    // Refresh orders after creating a new one
+    await fetchOrders();
+
+    return response.data;
+  } catch (err) {
+    console.error('Error creating direct order:', err);
+    setError(err.response?.data?.message || 'Failed to create order');
+    return null;
+  } finally {
+    setLoading(false);
+  }
+};
+// Modified createDirectOrder function for OrderContext.jsx
+// Updated createDirectOrder function in OrderContext.jsx
+const createDirectOrder = async (orderData) => {
+  if (!isLoggedIn) return null;
+
+  try {
+    setLoading(true);
+    setError(null);
+
+    // Debug log incoming data
+    console.log('Creating direct order with data:', JSON.stringify({
+      items: orderData.items.map(i => ({
+        price: i.price,
+        quantity: i.quantity,
+        totalPrice: i.totalPrice
+      })),
+      subtotal: orderData.subtotal,
+      deliveryFee: orderData.deliveryFee,
+      total: orderData.total
+    }));
+
+    // Ensure all item properties are correctly set
+    if (orderData.items) {
+      orderData.items = orderData.items.map(item => ({
+        ...item,
+        // Ensure discount information is included
+        discountType: item.discountType || null,
+        discountValue: item.discountValue || 0,
+        // Make sure price is the discounted price
+        price: item.price,
+        // Make sure totalPrice is calculated using the discounted price
+        totalPrice: item.price * item.quantity
+      }));
     }
-  };
+
+    // Recalculate subtotal to ensure it's based on the discounted prices
+    const calculatedSubtotal = orderData.items.reduce(
+      (sum, item) => sum + (item.price * item.quantity), 
+      0
+    );
+    
+    // Recalculate total
+    const calculatedTotal = calculatedSubtotal + orderData.deliveryFee;
+    
+    // Override the values to ensure they're correct
+    orderData.subtotal = calculatedSubtotal;
+    orderData.total = calculatedTotal;
+
+    console.log('Verified order data:', {
+      subtotal: orderData.subtotal,
+      deliveryFee: orderData.deliveryFee,
+      total: orderData.total
+    });
+
+    // Use the direct order endpoint
+    const response = await orderApi.createDirectOrder(orderData);
+
+    // Refresh orders after creating a new one
+    await fetchOrders();
+
+    return response.data;
+  } catch (err) {
+    console.error('Error creating direct order:', err);
+    setError(err.response?.data?.message || 'Failed to create order');
+    return null;
+  } finally {
+    setLoading(false);
+  }
+};
   // Cancel an order
   const cancelOrder = async (orderId, reason) => {
     if (!isLoggedIn) return false;

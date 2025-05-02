@@ -245,71 +245,104 @@ export default function SearchScreen() {
   );
 
   // Render product item
-  const renderProduct = ({ item }) => {
-    const price = extractPrice(item.product?.price || 0);
+// Render product item
+const renderProduct = ({ item }) => {
+  // Parse base price and calculate discounted price
+  const basePrice = extractPrice(item.product?.price || 0);
+  let finalPrice = basePrice;
+  
+  // Apply discount if available (match the same logic as in product details)
+  if (item.discountType && item.discountValue) {
+    finalPrice = 
+      item.discountType === 'percentage'
+        ? basePrice * (1 - item.discountValue / 100)
+        : Math.max(0, basePrice - item.discountValue);
+  }
+  
+  // Calculate discount percentage for display
+  const discountPercent = 
+    basePrice > finalPrice
+      ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
+      : 0;
 
-    return (
-      <TouchableOpacity
-        style={styles.productCard}
-        onPress={() =>
-          router.push({ pathname: '/product/[id]', params: { id: item._id } })
-        }
-        activeOpacity={0.8}
-      >
-        <Image
-          source={{
-            uri: item.product?.imageUrl || 'https://via.placeholder.com/150',
-          }}
-          style={styles.productImage}
-          resizeMode="cover"
-        />
-        <View style={styles.productInfo}>
-          <View style={styles.productHeader}>
-            <View style={styles.categoryTag}>
-              <Tag size={12} color={theme.colors.primary.main} />
-              <Text style={styles.categoryName} numberOfLines={1}>
-                {item.product?.category?.name?.replace(/_/g, ' ') || 'Category'}
-              </Text>
-            </View>
-            <View style={styles.ratingContainer}>
-              <Star
-                size={14}
-                color={theme.colors.secondary.main}
-                fill={theme.colors.secondary.main}
-              />
-              <Text style={styles.ratingText}>4.5</Text>
-            </View>
+  return (
+    <TouchableOpacity
+      style={styles.productCard}
+      onPress={() =>
+        router.push({ pathname: '/product/[id]', params: { id: item._id } })
+      }
+      activeOpacity={0.8}
+    >
+      <Image
+        source={{
+          uri: item.product?.imageUrl || 'https://via.placeholder.com/150',
+        }}
+        style={styles.productImage}
+        resizeMode="cover"
+      />
+      
+      {/* Add discount badge if there's a discount */}
+      {discountPercent > 0 && (
+        <View style={styles.discountBadge}>
+          <Tag size={12} color="#FFF" />
+          <Text style={styles.discountText}>{discountPercent}% OFF</Text>
+        </View>
+      )}
+      
+      <View style={styles.productInfo}>
+        <View style={styles.productHeader}>
+          <View style={styles.categoryTag}>
+            <Tag size={12} color={theme.colors.primary.main} />
+            <Text style={styles.categoryName} numberOfLines={1}>
+              {item.product?.category?.name?.replace(/_/g, ' ') || 'Category'}
+            </Text>
           </View>
-
-          <Text style={styles.productName} numberOfLines={2}>
-            {item.product?.title || 'Product'}
-          </Text>
-
-          <View style={styles.productVendorRow}>
-            <Text style={styles.vendorNameInProduct} numberOfLines={1}>
-              {item.vendor?.name || 'Vendor'}
-            </Text>
-            <Text style={styles.bulletPoint}>•</Text>
-            <Text style={styles.vendorDistance}>
-              {calculateDistance(item.vendor?.location)}
-            </Text>
-          </View>
-
-          <View style={styles.productBottom}>
-            <Text style={styles.productPrice}>
-              Rs. {price.toLocaleString()}
-            </Text>
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => addToCart(item)}
-            >
-              <ShoppingCart size={16} color="#FFF" />
-            </TouchableOpacity>
+          <View style={styles.ratingContainer}>
+            <Star
+              size={14}
+              color={theme.colors.secondary.main}
+              fill={theme.colors.secondary.main}
+            />
+            <Text style={styles.ratingText}>4.5</Text>
           </View>
         </View>
-      </TouchableOpacity>
-    );
-  };
+
+        <Text style={styles.productName} numberOfLines={2}>
+          {item.product?.title || 'Product'}
+        </Text>
+
+        <View style={styles.productVendorRow}>
+          <Text style={styles.vendorNameInProduct} numberOfLines={1}>
+            {item.vendor?.name || 'Vendor'}
+          </Text>
+          <Text style={styles.bulletPoint}>•</Text>
+          <Text style={styles.vendorDistance}>
+            {calculateDistance(item.vendor?.location)}
+          </Text>
+        </View>
+
+        <View style={styles.productBottom}>
+          <View style={styles.priceContainer}>
+            <Text style={styles.productPrice}>
+              Rs. {finalPrice.toLocaleString()}
+            </Text>
+            {basePrice > finalPrice && (
+              <Text style={styles.originalPrice}>
+                Rs. {basePrice.toLocaleString()}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => addToCart(item)}
+          >
+            <ShoppingCart size={16} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
   // Render recent search item
   const renderRecentSearch = ({ item }) => (
@@ -777,4 +810,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
+  // Add these styles to your StyleSheet in search.jsx
+discountBadge: {
+  position: 'absolute',
+  top: 10,
+  left: 10,
+  backgroundColor: '#FF4D67',
+  paddingVertical: 4,
+  paddingHorizontal: 8,
+  borderRadius: 12,
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+discountText: {
+  color: '#fff',
+  fontSize: 11,
+  fontWeight: '700',
+  marginLeft: 3,
+},
+priceContainer: {
+  flexDirection: 'column',
+},
+originalPrice: {
+  fontSize: 12,
+  fontWeight: '400',
+  color: theme.colors.text.secondary,
+  textDecorationLine: 'line-through',
+},
+productBottom: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'flex-end', // Changed from 'center' to 'flex-end'
+},
 });

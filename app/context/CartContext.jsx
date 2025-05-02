@@ -24,25 +24,62 @@ export const CartProvider = ({ children }) => {
       const response = await cartApi.getCart();
 
       // Transform server response to match local cart structure
-      const formattedItems = response.data.items.map((item) => {
-        const vendorProduct = item.vendorProduct;
-        return {
-          id: vendorProduct._id,
-          productId: vendorProduct.product._id,
-          name: vendorProduct.product.title,
-          price: extractPrice(vendorProduct.product.price),
-          image: vendorProduct.product.imageUrl,
-          quantity: item.quantity,
-          vendor: {
-            id: vendorProduct.vendor._id,
-            name: vendorProduct.vendor.name,
-            distance: calculateDistance(vendorProduct.vendor.location),
-          },
-          category: vendorProduct.product.category?.name || '',
-          subCategory: vendorProduct.product.subCategory?.name || '',
-        };
-      });
-
+      // const formattedItems = response.data.items.map((item) => {
+      //   const vendorProduct = item.vendorProduct;
+      //   return {
+      //     id: vendorProduct._id,
+      //     productId: vendorProduct.product._id,
+      //     name: vendorProduct.product.title,
+      //     price: extractPrice(vendorProduct.product.price),
+      //     image: vendorProduct.product.imageUrl,
+      //     quantity: item.quantity,
+      //     vendor: {
+      //       id: vendorProduct.vendor._id,
+      //       name: vendorProduct.vendor.name,
+      //       distance: calculateDistance(vendorProduct.vendor.location),
+      //     },
+      //     category: vendorProduct.product.category?.name || '',
+      //     subCategory: vendorProduct.product.subCategory?.name || '',
+      //   };
+      // });
+// Transform server response to match local cart structure
+const formattedItems = response.data.items.map((item) => {
+  const vendorProduct = item.vendorProduct;
+  const basePrice = extractPrice(vendorProduct.product.price);
+  
+  // Calculate discounted price
+  let finalPrice = basePrice;
+  if (vendorProduct.discountType && vendorProduct.discountValue) {
+    if (vendorProduct.discountType === "percentage") {
+      finalPrice = basePrice * (1 - vendorProduct.discountValue / 100);
+    } else if (vendorProduct.discountType === "amount") {
+      finalPrice = Math.max(0, basePrice - vendorProduct.discountValue);
+    }
+  }
+  
+  finalPrice = parseFloat(finalPrice.toFixed(2));
+  
+  return {
+    id: vendorProduct._id,
+    productId: vendorProduct.product._id,
+    name: vendorProduct.product.title,
+    price: basePrice,
+    originalPrice: basePrice,
+    finalPrice: finalPrice,
+    discountType: vendorProduct.discountType,
+    discountValue: vendorProduct.discountValue,
+    image: vendorProduct.product.imageUrl,
+    quantity: item.quantity,
+    vendor: {
+      id: vendorProduct.vendor._id,
+      name: vendorProduct.vendor.name,
+      location: vendorProduct.vendor.location,
+      distance: calculateDistance(vendorProduct.vendor.location),
+    },
+    category: vendorProduct.product.category?.name || '',
+    subCategory: vendorProduct.product.subCategory?.name || '',
+  };
+});
       setCartItems(formattedItems);
     } catch (err) {
       console.error('Error fetching cart:', err);
@@ -53,12 +90,19 @@ export const CartProvider = ({ children }) => {
   };
 
   // Extract numeric price from string (e.g., "Rs. 825" -> 825)
-  const extractPrice = (priceStr) => {
-    if (!priceStr) return 0;
-    if (typeof priceStr === 'number') return priceStr;
+  // const extractPrice = (priceStr) => {
+  //   if (!priceStr) return 0;
+  //   if (typeof priceStr === 'number') return priceStr;
 
-    const match = priceStr.match(/\d+/);
-    return match ? parseInt(match[0], 10) : 0;
+  //   const match = priceStr.match(/\d+/);
+  //   return match ? parseInt(match[0], 10) : 0;
+  // };
+  
+  const extractPrice = (ps) => {
+    if (!ps) return 0;
+    if (typeof ps === 'number') return ps;
+    const m = String(ps).match(/[\d,]+/);
+    return m ? parseInt(m[0].replace(/,/g, ''), 10) : 0;
   };
 
   // Placeholder for distance calculation - would use actual coordinates
@@ -91,18 +135,40 @@ export const CartProvider = ({ children }) => {
         setCartItems(updatedItems);
       } else {
         // New item
-        const newItem = {
-          id: vendorProduct.id,
-          productId: vendorProduct.productId || vendorProduct.id,
-          name: vendorProduct.name || vendorProduct.title,
-          price: extractPrice(vendorProduct.price),
-          image: vendorProduct.image || vendorProduct.imageUrl,
-          quantity: 1,
-          vendor: vendorProduct.vendor || { name: 'Unknown Vendor' },
-          category: vendorProduct.category || '',
-          subCategory: vendorProduct.subCategory || '',
-        };
-
+        // const newItem = {
+        //   id: vendorProduct.id,
+        //   productId: vendorProduct.productId || vendorProduct.id,
+        //   name: vendorProduct.name || vendorProduct.title,
+        //   price: extractPrice(vendorProduct.price),
+        //   image: vendorProduct.image || vendorProduct.imageUrl,
+        //   quantity: 1,
+        //   vendor: vendorProduct.vendor || { name: 'Unknown Vendor' },
+        //   category: vendorProduct.category || '',
+        //   subCategory: vendorProduct.subCategory || '',
+        // };
+// New item with discount info
+const newItem = {
+  id: vendorProduct._id,
+  productId: vendorProduct.product?._id || vendorProduct.productId,
+  name: vendorProduct.product?.title || vendorProduct.name,
+  price: extractPrice(vendorProduct.product?.price || vendorProduct.price),
+  originalPrice: extractPrice(vendorProduct.product?.price || vendorProduct.price),
+  discountType: vendorProduct.discountType,
+  discountValue: vendorProduct.discountValue,
+  finalPrice: calculateFinalPrice(
+    extractPrice(vendorProduct.product?.price || vendorProduct.price),
+    vendorProduct.discountType,
+    vendorProduct.discountValue
+  ),
+  image: vendorProduct.product?.imageUrl || vendorProduct.image,
+  quantity: 1,
+  vendor: {
+    id: vendorProduct.vendor?._id || vendorProduct.vendor?.id,
+    name: vendorProduct.vendor?.name || 'Unknown Vendor'
+  },
+  category: vendorProduct.product?.category?.name || vendorProduct.category || '',
+  subCategory: vendorProduct.product?.subCategory?.name || vendorProduct.subCategory || ''
+};
         setCartItems([...cartItems, newItem]);
       }
 
@@ -115,7 +181,17 @@ export const CartProvider = ({ children }) => {
       setIsLoading(false);
     }
   };
-
+  const calculateFinalPrice = (basePrice, discountType, discountValue) => {
+    if (!discountType || !discountValue) return basePrice;
+    
+    if (discountType === 'percentage') {
+      return basePrice * (1 - discountValue / 100);
+    } else if (discountType === 'amount') {
+      return Math.max(0, basePrice - discountValue);
+    }
+    
+    return basePrice;
+  };
   // Update item quantity
   const updateQuantity = async (itemId, quantity) => {
     if (quantity < 1) {
@@ -182,11 +258,9 @@ export const CartProvider = ({ children }) => {
   };
 
   // Calculate cart total
-  const getCartTotal = () => {
-    return cartItems.reduce((total, item) => {
-      return total + item.price * item.quantity;
-    }, 0);
-  };
+// Calculate cart total with discounts
+const getCartTotal = () =>
+  cartItems.reduce((sum, item) => sum + item.finalPrice * item.quantity, 0);
 
   // Get cart item count
   const getCartCount = () => {
