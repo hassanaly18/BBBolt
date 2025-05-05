@@ -1,4 +1,4 @@
-//C:\Users\faeiz\Desktop\BBBolt\app\(tabs)\search.jsx
+// Modified search.jsx with filters and sorting options
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -13,6 +13,8 @@ import {
   Platform,
   Keyboard,
   Dimensions,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useNavigation } from 'expo-router';
@@ -25,6 +27,10 @@ import {
   Tag,
   MapPin,
   Star,
+  SlidersHorizontal,
+  ChevronDown,
+  ArrowUpDown,
+  Check,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { customerApi, categoryApi } from '../services/api';
@@ -35,6 +41,26 @@ import theme from '../theme';
 const { width } = Dimensions.get('window');
 const PRODUCT_CARD_WIDTH = width - 32;
 
+// Predefined radius options
+const radiusOptions = [
+  { value: 1, label: '1 km' },
+  { value: 3, label: '3 km' },
+  { value: 5, label: '5 km' },
+  { value: 10, label: '10 km' },
+  { value: 15, label: '15 km' },
+  { value: 20, label: '20 km' },
+  { value: 25, label: '25 km' },
+  { value: 50, label: '50 km' },
+];
+
+// Sorting options
+const sortOptions = [
+  { value: 'nearest', label: 'Nearest First' },
+  { value: 'farthest', label: 'Farthest First' },
+  { value: 'cheapest', label: 'Price: Low to High' },
+  { value: 'expensive', label: 'Price: High to Low' },
+];
+
 export default function SearchScreen() {
   const navigation = useNavigation();
   const { location, getLocationParams } = useLocation();
@@ -42,13 +68,23 @@ export default function SearchScreen() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [categories, setCategories] = useState([]);
+  const [subCategories, setSubCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedSubCategory, setSelectedSubCategory] = useState(null);
   const [results, setResults] = useState({ vendors: [], products: [] });
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
   const [showingRecent, setShowingRecent] = useState(false);
-
+  
+  // New state for filters and sorting
+  const [selectedRadius, setSelectedRadius] = useState(1); // Default to 1km
+  const [sortBy, setSortBy] = useState('nearest'); // Default sorting
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showSortOptions, setShowSortOptions] = useState(false);
+  const [showRadiusOptions, setShowRadiusOptions] = useState(false);
+  const [showSubCategoryOptions, setShowSubCategoryOptions] = useState(false);
+  const numColumns = 2;
   // Load categories
   useEffect(() => {
     const fetchCategories = async () => {
@@ -62,6 +98,28 @@ export default function SearchScreen() {
 
     fetchCategories();
   }, []);
+
+  // Load subcategories when category changes
+  useEffect(() => {
+    const fetchSubCategories = async () => {
+      if (!selectedCategory) {
+        setSubCategories([]);
+        setSelectedSubCategory(null);
+        return;
+      }
+      
+      try {
+        const response = await categoryApi.getSubCategoriesByCategory(selectedCategory);
+        setSubCategories(response.data || []);
+        setSelectedSubCategory(null); // Reset subcategory when category changes
+      } catch (error) {
+        console.error('Error fetching subcategories:', error);
+        setSubCategories([]);
+      }
+    };
+
+    fetchSubCategories();
+  }, [selectedCategory]);
 
   // Utility: extract price from string or return number
   const extractPrice = (str) => {
@@ -101,15 +159,22 @@ export default function SearchScreen() {
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distance = R * c;
 
-      // Format distance for display
-      if (distance < 1) {
-        return `${Math.round(distance * 1000)} m`;
-      } else {
-        return `${distance.toFixed(1)} km`;
-      }
+      // Return raw distance for sorting
+      return distance;
     } catch (error) {
       console.error('Error calculating distance:', error);
-      return 'Unknown';
+      return 9999; // Large number for unknown distances when sorting
+    }
+  };
+
+  // Format distance for display
+  const formatDistance = (distance) => {
+    if (typeof distance !== 'number') return 'Unknown';
+    
+    if (distance < 1) {
+      return `${Math.round(distance * 1000)} m`;
+    } else {
+      return `${distance.toFixed(1)} km`;
     }
   };
 
@@ -119,7 +184,7 @@ export default function SearchScreen() {
       return;
     }
 
-    if (!searchTerm.trim() && !selectedCategory) {
+    if (!searchTerm.trim() && !selectedCategory && !selectedSubCategory) {
       setResults({ vendors: [], products: [] });
       setShowingRecent(true);
       return;
@@ -133,7 +198,7 @@ export default function SearchScreen() {
       const locParams = getLocationParams();
       const params = {
         ...locParams,
-        radius: 1, // 10km radius search
+        radius: selectedRadius, // Use selected radius
       };
 
       // Add search term if provided
@@ -155,8 +220,64 @@ export default function SearchScreen() {
         params.categoryId = selectedCategory;
       }
 
+      // Add subcategory filter if selected
+      if (selectedSubCategory) {
+        params.subCategoryId = selectedSubCategory;
+      }
+
       const response = await customerApi.searchNearbyVendorsAndProducts(params);
-      setResults(response.data || { vendors: [], products: [] });
+      
+      // Get the raw results
+      let vendorResults = response.data?.vendors || [];
+      let productResults = response.data?.products || [];
+      
+      // Sort the results based on selection
+      const sortResults = () => {
+        switch (sortBy) {
+          case 'nearest':
+            vendorResults = vendorResults.sort((a, b) => 
+              calculateDistance(a.location) - calculateDistance(b.location)
+            );
+            productResults = productResults.sort((a, b) => 
+              calculateDistance(a.vendor?.location) - calculateDistance(b.vendor?.location)
+            );
+            break;
+          case 'farthest':
+            vendorResults = vendorResults.sort((a, b) => 
+              calculateDistance(b.location) - calculateDistance(a.location)
+            );
+            productResults = productResults.sort((a, b) => 
+              calculateDistance(b.vendor?.location) - calculateDistance(a.vendor?.location)
+            );
+            break;
+          case 'cheapest':
+            // Only affects products
+            productResults = productResults.sort((a, b) => {
+              const priceA = extractPrice(a.product?.price || 0);
+              const priceB = extractPrice(b.product?.price || 0);
+              return priceA - priceB;
+            });
+            break;
+          case 'expensive':
+            // Only affects products
+            productResults = productResults.sort((a, b) => {
+              const priceA = extractPrice(a.product?.price || 0);
+              const priceB = extractPrice(b.product?.price || 0);
+              return priceB - priceA;
+            });
+            break;
+          default:
+            break;
+        }
+      };
+      
+      // Apply sorting
+      sortResults();
+      
+      setResults({ 
+        vendors: vendorResults, 
+        products: productResults 
+      });
     } catch (error) {
       console.error('Search error:', error);
     } finally {
@@ -171,20 +292,32 @@ export default function SearchScreen() {
     performSearch();
   };
 
-  // Search on text change or category selection with debounce
+  // Re-search when filters change
   useEffect(() => {
-    if (!searchTerm.trim() && !selectedCategory) {
-      setShowingRecent(true);
-      setResults({ vendors: [], products: [] });
-      return;
+    if (location) {
+      // Using a debounce for search
+      const delaySearch = setTimeout(() => {
+        performSearch();
+      }, 500);
+  
+      return () => clearTimeout(delaySearch);
     }
+  }, [searchTerm, selectedCategory, selectedSubCategory, selectedRadius, sortBy, location]);
 
-    const delaySearch = setTimeout(() => {
-      performSearch();
-    }, 500);
+  // Apply filters and close modal
+  const applyFilters = () => {
+    performSearch();
+    setShowFilterModal(false);
+  };
 
-    return () => clearTimeout(delaySearch);
-  }, [searchTerm, selectedCategory, location]);
+  // Reset all filters
+  const resetFilters = () => {
+    setSelectedCategory(null);
+    setSelectedSubCategory(null);
+    setSelectedRadius(1);
+    setSortBy('nearest');
+    setShowFilterModal(false);
+  };
 
   // Render category pill
   const renderCategory = ({ item }) => (
@@ -207,142 +340,227 @@ export default function SearchScreen() {
       </Text>
     </TouchableOpacity>
   );
-
-  // Render vendor item
-  const renderVendor = ({ item }) => (
-    <TouchableOpacity
-      style={styles.vendorCard}
-      onPress={() =>
-        router.push({ pathname: '/vendor/[id]', params: { id: item._id } })
-      }
-      activeOpacity={0.7}
-    >
-      <LinearGradient
-        colors={['#4d216d20', '#7d4c9f10']}
-        style={styles.vendorIcon}
+  const renderGridProduct = ({ item }) => {
+    // Parse base price and calculate discounted price
+    const basePrice = extractPrice(item.product?.price || 0);
+    let finalPrice = basePrice;
+    
+    // Apply discount if available (match the same logic as in product details)
+    if (item.discountType && item.discountValue) {
+      finalPrice = 
+        item.discountType === 'percentage'
+          ? basePrice * (1 - item.discountValue / 100)
+          : Math.max(0, basePrice - item.discountValue);
+    }
+    
+    // Calculate discount percentage for display
+    const discountPercent = 
+      basePrice > finalPrice
+        ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
+        : 0;
+  
+    const distanceValue = calculateDistance(item.vendor?.location);
+    
+    return (
+      <TouchableOpacity
+        style={styles.gridProductCard}
+        onPress={() =>
+          router.push({ pathname: '/product/[id]', params: { id: item._id } })
+        }
+        activeOpacity={0.8}
       >
-        <Store size={24} color={theme.colors.primary.main} />
-      </LinearGradient>
-      <View style={styles.vendorInfo}>
-        <Text style={styles.vendorName}>{item.name}</Text>
-        <View style={styles.vendorAddressRow}>
-          <MapPin
-            size={14}
-            color={theme.colors.text.secondary}
-            style={styles.addressIcon}
+        <View style={styles.gridImageContainer}>
+          <Image
+            source={{
+              uri: item.product?.imageUrl || 'https://via.placeholder.com/150',
+            }}
+            style={styles.gridProductImage}
+            resizeMode="cover"
           />
-          <Text style={styles.vendorAddress} numberOfLines={1}>
-            {item.location?.formattedAddress || 'No address'}
+          
+          {/* Add discount badge if there's a discount */}
+          {discountPercent > 0 && (
+            <View style={styles.gridDiscountBadge}>
+              <Text style={styles.gridDiscountText}>{discountPercent}%</Text>
+            </View>
+          )}
+        </View>
+        
+        <View style={styles.gridProductInfo}>
+          <Text style={styles.gridProductName} numberOfLines={1}>
+            {item.product?.title || 'Product'}
           </Text>
-        </View>
-      </View>
-      <View style={styles.distanceBadge}>
-        <Text style={styles.distanceText}>
-          {calculateDistance(item.location)}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  // Render product item
-// Render product item
-const renderProduct = ({ item }) => {
-  // Parse base price and calculate discounted price
-  const basePrice = extractPrice(item.product?.price || 0);
-  let finalPrice = basePrice;
-  
-  // Apply discount if available (match the same logic as in product details)
-  if (item.discountType && item.discountValue) {
-    finalPrice = 
-      item.discountType === 'percentage'
-        ? basePrice * (1 - item.discountValue / 100)
-        : Math.max(0, basePrice - item.discountValue);
-  }
-  
-  // Calculate discount percentage for display
-  const discountPercent = 
-    basePrice > finalPrice
-      ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
-      : 0;
-
-  return (
-    <TouchableOpacity
-      style={styles.productCard}
-      onPress={() =>
-        router.push({ pathname: '/product/[id]', params: { id: item._id } })
-      }
-      activeOpacity={0.8}
-    >
-      <Image
-        source={{
-          uri: item.product?.imageUrl || 'https://via.placeholder.com/150',
-        }}
-        style={styles.productImage}
-        resizeMode="cover"
-      />
-      
-      {/* Add discount badge if there's a discount */}
-      {discountPercent > 0 && (
-        <View style={styles.discountBadge}>
-          <Tag size={12} color="#FFF" />
-          <Text style={styles.discountText}>{discountPercent}% OFF</Text>
-        </View>
-      )}
-      
-      <View style={styles.productInfo}>
-        <View style={styles.productHeader}>
-          <View style={styles.categoryTag}>
-            <Tag size={12} color={theme.colors.primary.main} />
-            <Text style={styles.categoryName} numberOfLines={1}>
-              {item.product?.category?.name?.replace(/_/g, ' ') || 'Category'}
-            </Text>
-          </View>
-          <View style={styles.ratingContainer}>
-            <Star
-              size={14}
-              color={theme.colors.secondary.main}
-              fill={theme.colors.secondary.main}
-            />
-            <Text style={styles.ratingText}>4.5</Text>
-          </View>
-        </View>
-
-        <Text style={styles.productName} numberOfLines={2}>
-          {item.product?.title || 'Product'}
-        </Text>
-
-        <View style={styles.productVendorRow}>
-          <Text style={styles.vendorNameInProduct} numberOfLines={1}>
+          
+          <Text style={styles.gridVendorName} numberOfLines={1}>
             {item.vendor?.name || 'Vendor'}
           </Text>
-          <Text style={styles.bulletPoint}>•</Text>
-          <Text style={styles.vendorDistance}>
-            {calculateDistance(item.vendor?.location)}
+  
+          <View style={styles.gridProductBottom}>
+            <View style={styles.gridPriceContainer}>
+              <Text style={styles.gridProductPrice}>
+                Rs. {finalPrice.toLocaleString()}
+              </Text>
+              {basePrice > finalPrice && (
+                <Text style={styles.gridOriginalPrice}>
+                  Rs. {basePrice.toLocaleString()}
+                </Text>
+              )}
+            </View>
+          </View>
+        </View>
+  
+        <TouchableOpacity
+          style={styles.gridAddBtn}
+          onPress={(e) => {
+            e.stopPropagation();
+            addToCart(item);
+          }}
+        >
+          <ShoppingCart size={14} color="#FFF" />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+  // Render vendor item
+  const renderVendor = ({ item }) => {
+    const distanceValue = calculateDistance(item.location);
+    
+    return (
+      <TouchableOpacity
+        style={styles.vendorCard}
+        onPress={() =>
+      router.push({ pathname: '/(tabs)/vendor-details', params: { id: item._id } })
+        }
+        activeOpacity={0.7}
+      >
+        <LinearGradient
+          colors={['#4d216d20', '#7d4c9f10']}
+          style={styles.vendorIcon}
+        >
+          <Store size={24} color={theme.colors.primary.main} />
+        </LinearGradient>
+        <View style={styles.vendorInfo}>
+          <Text style={styles.vendorName}>{item.name}</Text>
+          <View style={styles.vendorAddressRow}>
+            <MapPin
+              size={14}
+              color={theme.colors.text.secondary}
+              style={styles.addressIcon}
+            />
+            <Text style={styles.vendorAddress} numberOfLines={1}>
+              {item.location?.formattedAddress || 'No address'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.distanceBadge}>
+          <Text style={styles.distanceText}>
+            {formatDistance(distanceValue)}
           </Text>
         </View>
+      </TouchableOpacity>
+    );
+  };
 
-        <View style={styles.productBottom}>
-          <View style={styles.priceContainer}>
-            <Text style={styles.productPrice}>
-              Rs. {finalPrice.toLocaleString()}
-            </Text>
-            {basePrice > finalPrice && (
-              <Text style={styles.originalPrice}>
-                Rs. {basePrice.toLocaleString()}
-              </Text>
-            )}
+  // Render product item
+  const renderProduct = ({ item }) => {
+    // Parse base price and calculate discounted price
+    const basePrice = extractPrice(item.product?.price || 0);
+    let finalPrice = basePrice;
+    
+    // Apply discount if available (match the same logic as in product details)
+    if (item.discountType && item.discountValue) {
+      finalPrice = 
+        item.discountType === 'percentage'
+          ? basePrice * (1 - item.discountValue / 100)
+          : Math.max(0, basePrice - item.discountValue);
+    }
+    
+    // Calculate discount percentage for display
+    const discountPercent = 
+      basePrice > finalPrice
+        ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
+        : 0;
+  
+    const distanceValue = calculateDistance(item.vendor?.location);
+    
+    return (
+      <TouchableOpacity
+        style={styles.productCard}
+        onPress={() =>
+          router.push({ pathname: '/product/[id]', params: { id: item._id } })
+        }
+        activeOpacity={0.8}
+      >
+        <Image
+          source={{
+            uri: item.product?.imageUrl || 'https://via.placeholder.com/150',
+          }}
+          style={styles.productImage}
+          resizeMode="cover"
+        />
+        
+        {/* Add discount badge if there's a discount */}
+        {discountPercent > 0 && (
+          <View style={styles.discountBadge}>
+            <Tag size={12} color="#FFF" />
+            <Text style={styles.discountText}>{discountPercent}% OFF</Text>
           </View>
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => addToCart(item)}
-          >
-            <ShoppingCart size={16} color="#FFF" />
-          </TouchableOpacity>
+        )}
+        
+        <View style={styles.productInfo}>
+          <View style={styles.productHeader}>
+            <View style={styles.categoryTag}>
+              <Tag size={12} color={theme.colors.primary.main} />
+              <Text style={styles.categoryName} numberOfLines={1}>
+                {item.product?.category?.name?.replace(/_/g, ' ') || 'Category'}
+              </Text>
+            </View>
+            <View style={styles.ratingContainer}>
+              <Star
+                size={14}
+                color={theme.colors.secondary.main}
+                fill={theme.colors.secondary.main}
+              />
+              <Text style={styles.ratingText}>4.5</Text>
+            </View>
+          </View>
+  
+          <Text style={styles.productName} numberOfLines={2}>
+            {item.product?.title || 'Product'}
+          </Text>
+  
+          <View style={styles.productVendorRow}>
+            <Text style={styles.vendorNameInProduct} numberOfLines={1}>
+              {item.vendor?.name || 'Vendor'}
+            </Text>
+            <Text style={styles.bulletPoint}>•</Text>
+            <Text style={styles.vendorDistance}>
+              {formatDistance(distanceValue)}
+            </Text>
+          </View>
+  
+          <View style={styles.productBottom}>
+            <View style={styles.priceContainer}>
+              <Text style={styles.productPrice}>
+                Rs. {finalPrice.toLocaleString()}
+              </Text>
+              {basePrice > finalPrice && (
+                <Text style={styles.originalPrice}>
+                  Rs. {basePrice.toLocaleString()}
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => addToCart(item)}
+            >
+              <ShoppingCart size={16} color="#FFF" />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
-};
+      </TouchableOpacity>
+    );
+  };
 
   // Render recent search item
   const renderRecentSearch = ({ item }) => (
@@ -366,6 +584,23 @@ const renderProduct = ({ item }) => {
       <Text style={styles.sectionCount}>{count} found</Text>
     </View>
   );
+
+  // Get current filter summary text
+  const getFilterSummary = () => {
+    let summary = [];
+    
+    if (selectedRadius !== 1) {
+      summary.push(`${selectedRadius}km`);
+    }
+    
+    if (sortBy !== 'nearest') {
+      const sortName = sortOptions.find(option => option.value === sortBy)?.label;
+      if (sortName) summary.push(sortName);
+    }
+    
+    if (summary.length === 0) return 'Filter';
+    return summary.join(' • ');
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -394,15 +629,44 @@ const renderProduct = ({ item }) => {
         </View>
       </View>
 
-      {/* Categories */}
-      <FlatList
-        data={categories}
-        renderItem={renderCategory}
-        keyExtractor={(item) => item._id}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoriesContainer}
-      />
+      {/* Filter/Sort Bar */}
+      <View style={styles.filterSortBar}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoriesContainer}
+        >
+          {categories.map(category => (
+            <TouchableOpacity
+              key={category._id}
+              style={[
+                styles.categoryPill,
+                selectedCategory === category._id && styles.categoryPillSelected,
+              ]}
+              onPress={() =>
+                setSelectedCategory(selectedCategory === category._id ? null : category._id)
+              }
+            >
+              <Text
+                style={[
+                  styles.categoryPillText,
+                  selectedCategory === category._id && styles.categoryPillTextSelected,
+                ]}
+              >
+                {category.name.replace(/_/g, ' ')}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <TouchableOpacity 
+          style={styles.filterButton}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <SlidersHorizontal size={16} color={theme.colors.primary.main} />
+          <Text style={styles.filterButtonText}>{getFilterSummary()}</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Results */}
       {loading ? (
@@ -422,69 +686,286 @@ const renderProduct = ({ item }) => {
           />
         </View>
       ) : (
-        <FlatList
-          data={[
-            ...(results.vendors.length > 0 ? [{ type: 'vendorHeader' }] : []),
-            ...results.vendors.map((vendor) => ({
-              type: 'vendor',
-              data: vendor,
-            })),
-            ...(results.products.length > 0 ? [{ type: 'productHeader' }] : []),
-            ...results.products.map((product) => ({
-              type: 'product',
-              data: product,
-            })),
-          ]}
-          renderItem={({ item }) => {
-            if (item.type === 'vendorHeader') {
-              return renderSectionHeader('Vendors', results.vendors.length);
-            } else if (item.type === 'vendor') {
-              return renderVendor({ item: item.data });
-            } else if (item.type === 'productHeader') {
-              return renderSectionHeader('Products', results.products.length);
-            } else if (item.type === 'product') {
-              return renderProduct({ item: item.data });
-            }
-            return null;
-          }}
-          keyExtractor={(item, index) => {
-            if (item.type === 'vendor' || item.type === 'product') {
-              return `${item.type}-${item.data._id}`;
-            }
-            return `${item.type}-${index}`;
-          }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[theme.colors.primary.main]}
-            />
-          }
-          contentContainerStyle={[
-            styles.resultsList,
-            !results.vendors.length &&
-              !results.products.length &&
-              styles.emptyListContainer,
-          ]}
-          ListEmptyComponent={
-            !loading && (
-              <View style={styles.emptyContainer}>
-                <Image
-                  source={require('../../assets/images/no-shops.png')}
-                  style={styles.emptyImage}
-                  resizeMode="contain"
-                />
-                <Text style={styles.emptyTitle}>No results found</Text>
-                <Text style={styles.emptyText}>
-                  {searchTerm
-                    ? 'Try a different search term or category.'
-                    : 'Enter a search term or select a category to find vendors and products.'}
-                </Text>
-              </View>
-            )
-          }
+// Replace the current FlatList component with this updated version
+
+<FlatList
+  data={[
+    // Show products first in a grid
+    ...(results.products.length > 0 ? [{ type: 'productHeader' }] : []),
+    // Special handling for grid layout
+    ...(results.products.length > 0
+      ? [{ type: 'productGrid', data: results.products }]
+      : []),
+    // Then show vendors in a list
+    ...(results.vendors.length > 0 ? [{ type: 'vendorHeader' }] : []),
+    ...results.vendors.map((vendor) => ({
+      type: 'vendor',
+      data: vendor,
+    })),
+  ]}
+  renderItem={({ item }) => {
+    if (item.type === 'productHeader') {
+      return renderSectionHeader('Products', results.products.length);
+    } else if (item.type === 'productGrid') {
+      // Render a grid of products
+      return (
+        <View style={styles.productsGrid}>
+          {item.data.map((product, index) => (
+            <View 
+              key={`product-${product._id}`} 
+              style={[
+                styles.gridProductContainer,
+                // Add right margin to items in the left column
+                index % numColumns === 0 ? { marginRight: 8 } : { marginLeft: 8 }
+              ]}
+            >
+              {renderGridProduct({ item: product })}
+            </View>
+          ))}
+        </View>
+      );
+    } else if (item.type === 'vendorHeader') {
+      return renderSectionHeader('Vendors', results.vendors.length);
+    } else if (item.type === 'vendor') {
+      return renderVendor({ item: item.data });
+    }
+    return null;
+  }}
+  keyExtractor={(item, index) => {
+    if (item.type === 'vendor') {
+      return `${item.type}-${item.data._id}`;
+    } else if (item.type === 'productGrid') {
+      return 'product-grid';
+    }
+    return `${item.type}-${index}`;
+  }}
+  refreshControl={
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      colors={[theme.colors.primary.main]}
+    />
+  }
+  contentContainerStyle={[
+    styles.resultsList,
+    !results.vendors.length &&
+      !results.products.length &&
+      styles.emptyListContainer,
+  ]}
+  ListEmptyComponent={
+    !loading && (
+      <View style={styles.emptyContainer}>
+        <Image
+          source={require('../../assets/images/no-shops.png')}
+          style={styles.emptyImage}
+          resizeMode="contain"
         />
+        <Text style={styles.emptyTitle}>No results found</Text>
+        <Text style={styles.emptyText}>
+          {searchTerm || selectedCategory || selectedSubCategory
+            ? 'Try different search terms, categories, or expand your search radius.'
+            : 'Enter a search term or select a category to find vendors and products.'}
+        </Text>
+      </View>
+    )
+  }
+/>
       )}
+
+      {/* Filter Modal */}
+      <Modal
+        visible={showFilterModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Filters & Sort</Text>
+              <TouchableOpacity onPress={() => setShowFilterModal(false)}>
+                <X size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {/* Category Section */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Category</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.modalCategoriesContainer}
+                >
+                  {categories.map(category => (
+                    <TouchableOpacity
+                      key={category._id}
+                      style={[
+                        styles.modalCategoryPill,
+                        selectedCategory === category._id && styles.modalCategoryPillSelected,
+                      ]}
+                      onPress={() => {
+                        setSelectedCategory(selectedCategory === category._id ? null : category._id);
+                        setSelectedSubCategory(null);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.modalCategoryPillText,
+                          selectedCategory === category._id && styles.modalCategoryPillTextSelected,
+                        ]}
+                      >
+                        {category.name.replace(/_/g, ' ')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Sub-Category Section - Only show when category is selected */}
+              {selectedCategory && subCategories.length > 0 && (
+                <View style={styles.filterSection}>
+                  <Text style={styles.filterSectionTitle}>Sub-Category</Text>
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.modalCategoriesContainer}
+                  >
+                    {subCategories.map(subCategory => (
+                      <TouchableOpacity
+                        key={subCategory._id}
+                        style={[
+                          styles.modalCategoryPill,
+                          selectedSubCategory === subCategory._id && styles.modalCategoryPillSelected,
+                        ]}
+                        onPress={() =>
+                          setSelectedSubCategory(selectedSubCategory === subCategory._id ? null : subCategory._id)
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.modalCategoryPillText,
+                            selectedSubCategory === subCategory._id && styles.modalCategoryPillTextSelected,
+                          ]}
+                        >
+                          {subCategory.name.replace(/_/g, ' ')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Radius Section */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Search Radius</Text>
+                <View style={styles.dropdownSelector}>
+                  <TouchableOpacity 
+                    style={styles.dropdownButton}
+                    onPress={() => setShowRadiusOptions(!showRadiusOptions)}
+                  >
+                    <Text style={styles.dropdownButtonText}>
+                      {radiusOptions.find(opt => opt.value === selectedRadius)?.label || '1 km'}
+                    </Text>
+                    <ChevronDown size={16} color={theme.colors.text.secondary} />
+                  </TouchableOpacity>
+                  
+                  {showRadiusOptions && (
+                    <View style={styles.dropdownOptions}>
+                      {radiusOptions.map(option => (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.dropdownOption,
+                            selectedRadius === option.value && styles.dropdownOptionSelected
+                          ]}
+                          onPress={() => {
+                            setSelectedRadius(option.value);
+                            setShowRadiusOptions(false);
+                          }}
+                        >
+                          <Text 
+                            style={[
+                              styles.dropdownOptionText,
+                              selectedRadius === option.value && styles.dropdownOptionTextSelected
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                          {selectedRadius === option.value && (
+                            <Check size={16} color={theme.colors.primary.main} />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+
+              {/* Sort By Section */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Sort By</Text>
+                <View style={styles.dropdownSelector}>
+                  <TouchableOpacity 
+                    style={styles.dropdownButton}
+                    onPress={() => setShowSortOptions(!showSortOptions)}
+                  >
+                    <Text style={styles.dropdownButtonText}>
+                      {sortOptions.find(opt => opt.value === sortBy)?.label || 'Nearest First'}
+                    </Text>
+                    <ArrowUpDown size={16} color={theme.colors.text.secondary} />
+                  </TouchableOpacity>
+                  
+                  {showSortOptions && (
+                    <View style={styles.dropdownOptions}>
+                      {sortOptions.map(option => (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.dropdownOption,
+                            sortBy === option.value && styles.dropdownOptionSelected
+                          ]}
+                          onPress={() => {
+                            setSortBy(option.value);
+                            setShowSortOptions(false);
+                          }}
+                        >
+                          <Text 
+                            style={[
+                              styles.dropdownOptionText,
+                              sortBy === option.value && styles.dropdownOptionTextSelected
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                          {sortBy === option.value && (
+                            <Check size={16} color={theme.colors.primary.main} />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.resetButton}
+                onPress={resetFilters}
+              >
+                <Text style={styles.resetButtonText}>Reset All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.applyButton}
+                onPress={applyFilters}
+              >
+                <Text style={styles.applyButtonText}>Apply Filters</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -528,10 +1009,18 @@ const styles = StyleSheet.create({
     height: 48,
     paddingVertical: 8,
   },
+  filterSortBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingRight: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
   categoriesContainer: {
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#fff',
     height: 60,
   },
   categoryPill: {
@@ -557,6 +1046,21 @@ const styles = StyleSheet.create({
   },
   categoryPillTextSelected: {
     color: '#fff',
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginLeft: 8,
+  },
+  filterButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.primary.main,
+    marginLeft: 6,
   },
   loadingContainer: {
     flex: 1,
@@ -620,6 +1124,112 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: theme.colors.text.primary,
   },
+  productsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  gridProductContainer: {
+    width: (width - 40) / 2, // Account for padding and margins
+    marginBottom: 16,
+  },
+  gridProductCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    overflow: 'hidden',
+    height: 220,
+    position: 'relative',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  gridImageContainer: {
+    height: 120,
+    position: 'relative',
+  },
+  gridProductImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f5f5f5',
+  },
+  gridDiscountBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: '#FF4D67',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+  },
+  gridDiscountText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  gridProductInfo: {
+    padding: 10,
+    flex: 1,
+  },
+  gridProductName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginBottom: 4,
+  },
+  gridVendorName: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    marginBottom: 6,
+  },
+  gridProductBottom: {
+    marginTop: 'auto',
+  },
+  gridPriceContainer: {
+    flexDirection: 'column',
+  },
+  gridProductPrice: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: theme.colors.primary.main,
+  },
+  gridOriginalPrice: {
+    fontSize: 10,
+    fontWeight: '400',
+    color: theme.colors.text.secondary,
+    textDecorationLine: 'line-through',
+  },
+  gridAddBtn: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    backgroundColor: theme.colors.primary.main,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+
   sectionCount: {
     fontSize: 14,
     color: theme.colors.text.secondary,
@@ -760,12 +1370,21 @@ const styles = StyleSheet.create({
   productBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-end',
+  },
+  priceContainer: {
+    flexDirection: 'column',
   },
   productPrice: {
     fontSize: 18,
     fontWeight: 'bold',
     color: theme.colors.primary.main,
+  },
+  originalPrice: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: theme.colors.text.secondary,
+    textDecorationLine: 'line-through',
   },
   addBtn: {
     backgroundColor: theme.colors.primary.main,
@@ -810,36 +1429,172 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
-  // Add these styles to your StyleSheet in search.jsx
-discountBadge: {
-  position: 'absolute',
-  top: 10,
-  left: 10,
-  backgroundColor: '#FF4D67',
-  paddingVertical: 4,
-  paddingHorizontal: 8,
-  borderRadius: 12,
-  flexDirection: 'row',
-  alignItems: 'center',
-},
-discountText: {
-  color: '#fff',
-  fontSize: 11,
-  fontWeight: '700',
-  marginLeft: 3,
-},
-priceContainer: {
-  flexDirection: 'column',
-},
-originalPrice: {
-  fontSize: 12,
-  fontWeight: '400',
-  color: theme.colors.text.secondary,
-  textDecorationLine: 'line-through',
-},
-productBottom: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'flex-end', // Changed from 'center' to 'flex-end'
-},
-});
+  discountBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: '#FF4D67',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  discountText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    marginLeft: 3,
+  },
+  
+  // Filter Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  modalBody: {
+    padding: 16,
+    maxHeight: '60%',
+  },
+  filterSection: {
+    marginBottom: 24,
+  },
+  filterSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+    marginBottom: 12,
+  },
+  modalCategoriesContainer: {
+    paddingBottom: 8,
+  },
+  modalCategoryPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  modalCategoryPillSelected: {
+    backgroundColor: theme.colors.primary.main,
+  },
+  modalCategoryPillText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text.secondary,
+    textTransform: 'capitalize',
+  },
+  modalCategoryPillTextSelected: {
+    color: '#fff',
+  },
+  dropdownSelector: {
+    position: 'relative',
+    zIndex: 1,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    color: theme.colors.text.primary,
+  },
+  dropdownOptions: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#eee',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownOptionSelected: {
+    backgroundColor: '#f6f0ff',
+  },
+  dropdownOptionText: {
+    fontSize: 16,
+    color: theme.colors.text.primary,
+  },
+  dropdownOptionTextSelected: {
+    color: theme.colors.primary.main,
+    fontWeight: '500',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  resetButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+    flex: 1,
+    marginRight: 10,
+    alignItems: 'center',
+  },
+  resetButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.text.secondary,
+  },
+  applyButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    backgroundColor: theme.colors.primary.main,
+    flex: 1,
+    marginLeft: 10,
+    alignItems: 'center',
+  },
+  applyButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
+  },})

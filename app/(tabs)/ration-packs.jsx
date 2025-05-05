@@ -6,14 +6,28 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Image,
+  FlatList,
+  Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MaterialIcons } from '@expo/vector-icons';
+import { 
+  ArrowLeft,
+  MapPin,
+  Filter,
+  ShoppingCart,
+  Trash,
+  ChevronDown,
+  ArrowUpDown,
+  Check
+} from 'lucide-react-native';
 import colors from '../constants/colors';
 import { categoryApi } from '../services/api';
+import { useLocation } from '../context/LocationContext';
 
 export default function RationPacks() {
   const router = useRouter();
+  const { location, getCurrentLocation } = useLocation();
   const [step, setStep] = useState('categories'); // 'categories', 'subcategories', 'products'
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -22,10 +36,37 @@ export default function RationPacks() {
   const [products, setProducts] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // New state for radius and sorting
+  const [selectedRadius, setSelectedRadius] = useState(5);
+  const [sortBy, setSortBy] = useState('nearest');
+  const [showRadiusOptions, setShowRadiusOptions] = useState(false);
+  const [showSortOptions, setShowSortOptions] = useState(false);
+  
+  // Predefined radius options
+  const radiusOptions = [
+    { value: 1, label: '1 km' },
+    { value: 3, label: '3 km' },
+    { value: 5, label: '5 km' },
+    { value: 10, label: '10 km' },
+    { value: 15, label: '15 km' },
+    { value: 20, label: '20 km' },
+    { value: 25, label: '25 km' },
+    { value: 50, label: '50 km' },
+  ];
+  
+  // Sorting options
+  const sortOptions = {
+    nearest: 'Nearest First',
+    farthest: 'Farthest First',
+    cheapest: 'Price: Low to High',
+    expensive: 'Price: High to Low',
+  };
 
-  // Load categories when component mounts
+  // Load categories and get location when component mounts
   useEffect(() => {
     fetchCategories();
+    getCurrentLocation();
   }, []);
 
   const fetchCategories = async () => {
@@ -98,7 +139,10 @@ export default function RationPacks() {
   };
 
   const handleCreateCustomPack = () => {
-    if (selectedProducts.length === 0) return;
+    if (selectedProducts.length === 0) {
+      Alert.alert('Error', 'Please select at least one product for your ration pack');
+      return;
+    }
 
     const productTitles = selectedProducts.map(product => product.title);
     
@@ -106,28 +150,154 @@ export default function RationPacks() {
       pathname: '/ration-pack-details',
       params: { 
         selectedItems: JSON.stringify(productTitles),
-        productIds: JSON.stringify(selectedProducts.map(p => p._id))
+        productIds: JSON.stringify(selectedProducts.map(p => p._id)),
+        radius: selectedRadius,
+        sortBy: sortBy
       },
     });
   };
 
-  // Predefined packs - could be loaded from an API in future
-  const predefinedPacks = [
-    {
-      id: 1,
-      name: 'Essential Pack',
-      items: ['Atta', 'Rice', 'Dal', 'Oil'],
-      price: 999,
-      rating: 4.5,
-    },
-    {
-      id: 2,
-      name: 'Family Pack',
-      items: ['Atta', 'Rice', 'Dal', 'Oil', 'Tea', 'Sugar'],
-      price: 1499,
-      rating: 4.8,
-    },
-  ];
+  const removeProduct = (productId) => {
+    setSelectedProducts(selectedProducts.filter(p => p._id !== productId));
+  };
+
+  // Render functions for the header with filters
+  const renderFiltersHeader = () => (
+    <View style={styles.filtersHeader}>
+      <View style={styles.filterOption}>
+        <Text style={styles.filterLabel}>Radius:</Text>
+        <TouchableOpacity 
+          style={styles.dropdownButton}
+          onPress={() => {
+            setShowRadiusOptions(!showRadiusOptions);
+            setShowSortOptions(false);
+          }}
+        >
+          <Text style={styles.dropdownButtonText}>
+            {radiusOptions.find(opt => opt.value === selectedRadius)?.label || '5 km'}
+          </Text>
+          <ChevronDown size={16} color={colors.text.secondary} />
+        </TouchableOpacity>
+        
+        {showRadiusOptions && (
+          <View style={styles.dropdownOptions}>
+            {radiusOptions.map(option => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.dropdownOption,
+                  selectedRadius === option.value && styles.dropdownOptionSelected
+                ]}
+                onPress={() => {
+                  setSelectedRadius(option.value);
+                  setShowRadiusOptions(false);
+                }}
+              >
+                <Text 
+                  style={[
+                    styles.dropdownOptionText,
+                    selectedRadius === option.value && styles.dropdownOptionTextSelected
+                  ]}
+                >
+                  {option.label}
+                </Text>
+                {selectedRadius === option.value && (
+                  <Check size={16} color={colors.primary} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+      
+      <View style={styles.filterOption}>
+        <Text style={styles.filterLabel}>Sort by:</Text>
+        <TouchableOpacity 
+          style={styles.dropdownButton}
+          onPress={() => {
+            setShowSortOptions(!showSortOptions);
+            setShowRadiusOptions(false);
+          }}
+        >
+          <Text style={styles.dropdownButtonText}>
+            {sortOptions[sortBy] || 'Nearest First'}
+          </Text>
+          <ArrowUpDown size={16} color={colors.text.secondary} />
+        </TouchableOpacity>
+        
+        {showSortOptions && (
+          <View style={styles.dropdownOptions}>
+            {Object.entries(sortOptions).map(([key, label]) => (
+              <TouchableOpacity
+                key={key}
+                style={[
+                  styles.dropdownOption,
+                  sortBy === key && styles.dropdownOptionSelected
+                ]}
+                onPress={() => {
+                  setSortBy(key);
+                  setShowSortOptions(false);
+                }}
+              >
+                <Text 
+                  style={[
+                    styles.dropdownOptionText,
+                    sortBy === key && styles.dropdownOptionTextSelected
+                  ]}
+                >
+                  {label}
+                </Text>
+                {sortBy === key && (
+                  <Check size={16} color={colors.primary} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
+  // Render selected products list
+  const renderSelectedProductsList = () => {
+    if (selectedProducts.length === 0) {
+      return (
+        <View style={styles.emptyProductsContainer}>
+          <Text style={styles.emptyProductsText}>No products selected yet</Text>
+          <Text style={styles.emptyProductsSubtext}>Select products from categories below to create your custom ration pack</Text>
+        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.selectedProductsContainer}>
+        <Text style={styles.sectionTitle}>Your Ration Pack</Text>
+        <FlatList
+          data={selectedProducts}
+          horizontal={false}
+          renderItem={({ item }) => (
+            <View style={styles.selectedProductCard}>
+              <Image 
+                source={{ uri: item.imageUrl || 'https://via.placeholder.com/60' }} 
+                style={styles.selectedProductImage}
+              />
+              <View style={styles.selectedProductInfo}>
+                <Text style={styles.selectedProductTitle}>{item.title}</Text>
+                <Text style={styles.selectedProductPrice}>Rs {item.price}</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.removeButton}
+                onPress={() => removeProduct(item._id)}
+              >
+                <Trash size={18} color={colors.error} />
+              </TouchableOpacity>
+            </View>
+          )}
+          keyExtractor={item => item._id}
+        />
+      </View>
+    );
+  };
 
   // Render functions for each step
   const renderCategories = () => (
@@ -155,7 +325,7 @@ export default function RationPacks() {
     <View style={styles.section}>
       <View style={styles.headerWithBack}>
         <TouchableOpacity onPress={handleGoBack}>
-          <MaterialIcons name="arrow-back" size={24} color={colors.text.primary} />
+          <ArrowLeft size={24} color={colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.sectionTitle}>
           {selectedCategory?.name}: Select Subcategory
@@ -184,7 +354,7 @@ export default function RationPacks() {
     <View style={styles.section}>
       <View style={styles.headerWithBack}>
         <TouchableOpacity onPress={handleGoBack}>
-          <MaterialIcons name="arrow-back" size={24} color={colors.text.primary} />
+          <ArrowLeft size={24} color={colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.sectionTitle}>
           {selectedSubcategory?.name}: Select Products
@@ -194,7 +364,7 @@ export default function RationPacks() {
       {loading ? (
         <ActivityIndicator size="large" color={colors.primary} />
       ) : (
-        <View style={styles.itemsGrid}>
+        <View style={styles.productsGrid}>
           {products.map((product) => (
             <TouchableOpacity
               key={product._id}
@@ -204,9 +374,19 @@ export default function RationPacks() {
               ]}
               onPress={() => toggleProductSelection(product)}
             >
-              <Text style={styles.productIcon}>🛒</Text>
-              <Text style={styles.productName}>{product.title}</Text>
-              <Text style={styles.productPrice}>Rs {product.price}</Text>
+              <Image 
+                source={{ uri: product.imageUrl || 'https://via.placeholder.com/80' }} 
+                style={styles.productImage}
+              />
+              <View style={styles.productInfo}>
+                <Text style={styles.productName}>{product.title}</Text>
+                <Text style={styles.productPrice}>Rs {product.price}</Text>
+              </View>
+              {selectedProducts.some(p => p._id === product._id) && (
+                <View style={styles.selectedCheckmark}>
+                  <Check size={16} color="#fff" />
+                </View>
+              )}
             </TouchableOpacity>
           ))}
         </View>
@@ -219,29 +399,17 @@ export default function RationPacks() {
       <ScrollView>
         <View style={styles.header}>
           <Text style={styles.headerText}>Ration Packs</Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Top Selling Ration Packs</Text>
-          <View style={styles.packsList}>
-            {predefinedPacks.map((pack) => (
-              <View key={pack.id} style={styles.packCard}>
-                <Text style={styles.packName}>{pack.name}</Text>
-                <Text style={styles.packItems}>{pack.items.join(', ')}</Text>
-                <Text style={styles.packPrice}>Rs {pack.price}</Text>
-                <View style={styles.rating}>
-                  <MaterialIcons name="star" size={16} color="#FFD700" />
-                  <Text style={{ marginLeft: 4, color: colors.text.secondary }}>
-                    {pack.rating}
-                  </Text>
-                </View>
-                <TouchableOpacity style={styles.addToCartButton}>
-                  <Text style={styles.addToCartText}>Add to Cart</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+          <View style={styles.locationInfo}>
+            <MapPin size={16} color={colors.primary} />
+            <Text style={styles.locationText}>
+              {location ? 'Using your current location' : 'Location not available'}
+            </Text>
           </View>
         </View>
+
+        {renderFiltersHeader()}
+        
+        {renderSelectedProductsList()}
 
         <View style={styles.customizeSection}>
           <Text style={styles.sectionTitle}>Customize your Ration Pack</Text>
@@ -252,7 +420,7 @@ export default function RationPacks() {
         </View>
       </ScrollView>
 
-      {step === 'products' && selectedProducts.length > 0 && (
+      {selectedProducts.length > 0 && (
         <View style={styles.createButtonContainer}>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Selected Items: {selectedProducts.length}</Text>
@@ -293,62 +461,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  locationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  locationText: {
+    marginLeft: 4,
+    fontSize: 14,
+    color: colors.text.secondary,
+  },
   section: {
     padding: 16,
     backgroundColor: colors.background.white,
     marginVertical: 8,
+    borderRadius: 8,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 8,
     color: colors.text.primary,
-  },
-  packsList: {
-    gap: 12,
-  },
-  packCard: {
-    backgroundColor: colors.background.white,
-    borderRadius: 12,
-    padding: 16,
     marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  packName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-  },
-  packItems: {
-    color: colors.text.secondary,
-    marginTop: 4,
-  },
-  packPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.primary,
-    marginTop: 8,
-  },
-  rating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
   },
   customizeSection: {
     padding: 16,
     backgroundColor: colors.background.white,
     marginTop: 8,
+    borderRadius: 8,
   },
   itemsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+  productsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginTop: 16,
   },
@@ -357,7 +507,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.white,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 8,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -375,7 +525,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.white,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 8,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -388,34 +538,50 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   productCard: {
-    width: '30%',
-    aspectRatio: 1,
+    width: '48%',
     backgroundColor: colors.background.white,
     borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 8,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: 'hidden',
+    position: 'relative',
   },
   selectedProduct: {
-    backgroundColor: colors.primary + '20',
+    backgroundColor: colors.primary + '10',
     borderColor: colors.primary,
     borderWidth: 2,
   },
-  productIcon: {
-    fontSize: 24,
-    marginBottom: 4,
+  productImage: {
+    width: '100%',
+    height: 100,
+    resizeMode: 'cover',
+    backgroundColor: '#f5f5f5',
+  },
+  productInfo: {
+    padding: 8,
   },
   productName: {
-    fontSize: 12,
-    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '500',
     color: colors.text.primary,
   },
   productPrice: {
-    fontSize: 12,
-    color: colors.text.secondary,
-    marginTop: 2,
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginTop: 4,
+  },
+  selectedCheckmark: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   createButtonContainer: {
     padding: 16,
@@ -449,16 +615,130 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  addToCartButton: {
-    backgroundColor: colors.primary,
+  filtersHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: colors.background.white,
+    marginVertical: 8,
+    borderRadius: 8,
+    zIndex: 10,
+  },
+  filterOption: {
+    flex: 1,
+    marginHorizontal: 4,
+    position: 'relative',
+  },
+  filterLabel: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginBottom: 4,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    padding: 8,
+    borderRadius: 8,
+  },
+  dropdownButtonText: {
+    fontSize: 14,
+    color: colors.text.primary,
+  },
+  dropdownOptions: {
+    position: 'absolute',
+    top: 64,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eee',
+    zIndex: 100,
+    // Shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownOptionSelected: {
+    backgroundColor: '#f6f0ff',
+  },
+  dropdownOptionText: {
+    fontSize: 14,
+    color: colors.text.primary,
+  },
+  dropdownOptionTextSelected: {
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  selectedProductsContainer: {
+    backgroundColor: colors.background.white,
+    marginVertical: 8,
+    padding: 16,
+    borderRadius: 8,
+  },
+  selectedProductCard: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  selectedProductImage: {
+    width: 60,
+    height: 60,
+    resizeMode: 'cover',
+    backgroundColor: '#f5f5f5',
+  },
+  selectedProductInfo: {
+    flex: 1,
+    padding: 8,
+    justifyContent: 'center',
+  },
+  selectedProductTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text.primary,
+  },
+  selectedProductPrice: {
+    fontSize: 14,
+    color: colors.primary,
+    marginTop: 2,
+  },
+  removeButton: {
+    padding: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyProductsContainer: {
+    backgroundColor: colors.background.white,
+    marginVertical: 8,
+    padding: 24,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 12,
   },
-  addToCartText: {
-    color: '#fff',
-    fontSize: 14,
+  emptyProductsText: {
+    fontSize: 16,
     fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: 8,
+  },
+  emptyProductsSubtext: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
 });

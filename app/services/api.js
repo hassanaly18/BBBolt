@@ -54,6 +54,7 @@ api.interceptors.response.use(
 );
 
 // Customer API endpoints
+// Updated Customer API endpoints in api.js
 export const customerApi = {
   // Auth
   register: (data) => api.post('/customers/register', data),
@@ -71,11 +72,53 @@ export const customerApi = {
   getNearbyProducts: (params) =>
     api.get('/customers/nearby-products', { params }),
 
+  // Enhanced search with more filters and sorting
   searchNearbyVendorsAndProducts: (params) =>
     api.get('/customers/search-nearby-vendors-products', { params }),
+  
   priceComparison: (params) =>
     api.get('/customers/price-comparison', { params }),
-  createRationPack: (data) => api.post('/customers/ration-packs', data),
+  createRationPack: (data) => api.post('/customers/ration-packs', data, {
+    timeout: 30000 // 30 seconds timeout for this specific endpoint
+  }),
+};
+
+// Helper function to add to LocationContext.js
+// This can be added to your LocationContext.js file to include sortBy parameter
+export const getLocationAndSearchParams = (options = {}) => {
+  const { location } = useLocation();
+  const params = {};
+  
+  if (location) {
+    params.lat = location.latitude;
+    params.lng = location.longitude;
+  }
+  
+  // Add radius if specified
+  if (options.radius) {
+    params.radius = options.radius;
+  }
+  
+  // Add category and subcategory if specified
+  if (options.categoryId) {
+    params.categoryId = options.categoryId;
+  }
+  
+  if (options.subCategoryId) {
+    params.subCategoryId = options.subCategoryId;
+  }
+  
+  // Add search term if specified
+  if (options.searchTerm) {
+    params.searchTerm = options.searchTerm;
+  }
+  
+  // Add sort option if specified
+  if (options.sortBy) {
+    params.sortBy = options.sortBy;
+  }
+  
+  return params;
 };
 
 // Products API endpoints
@@ -102,7 +145,14 @@ export const vendorProductApi = {
     api.get('/customers/nearby-products', {
       params: { ...locationParams, keyword },
     }),
-};
+    getVendorProductsByFilters: (params) => {
+      const { vendorId, ...otherParams } = params;
+      return api.get(`/vendor-products/by-vendor/${vendorId}`, { 
+        params: otherParams 
+      });
+    },
+  };
+  
 
 export const vendorApi = {
   getNearbyVendors: (params) => api.get('/vendors/nearby', { params }),
