@@ -4,6 +4,7 @@ import { useCallback, useState, useRef, useEffect } from 'react';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { NotificationProvider } from './context/NotificationContext';
 import {
   View,
   StyleSheet,
@@ -106,7 +107,9 @@ export default function RootLayout() {
     <AuthProvider>
       <LocationProvider>
         <CartProvider>
+        <NotificationProvider>
           <OrderProvider>
+    
             <SafeAreaProvider>
               <GestureHandlerRootView
                 style={styles.rootContainer}
@@ -165,7 +168,9 @@ export default function RootLayout() {
                 />
               </GestureHandlerRootView>
             </SafeAreaProvider>
+       
           </OrderProvider>
+          </NotificationProvider>
         </CartProvider>
       </LocationProvider>
     </AuthProvider>

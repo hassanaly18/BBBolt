@@ -2,10 +2,12 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { orderApi } from '../services/api';
 import { useAuth } from '../auth/AuthContext';
+import { useNotification } from './NotificationContext';
 
 const OrderContext = createContext();
 
 export function OrderProvider({ children }) {
+  const { sendLocalNotification } = useNotification();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -20,18 +22,86 @@ export function OrderProvider({ children }) {
       setOrders([]);
     }
   }, [isLoggedIn]);
+// Add this to your OrderContext.jsx
+useEffect(() => {
+  // Only poll when logged in
+  if (!isLoggedIn) return;
+  
+  console.log('Setting up order polling interval');
+  
+  // Set up interval to check for order updates every 15 seconds
+  const intervalId = setInterval(() => {
+    console.log('Polling for order updates...');
+    fetchOrders();
+  }, 15000); // 15 seconds
+  
+  // Clear interval on unmount or login state change
+  return () => {
+    console.log('Clearing order polling interval');
+    clearInterval(intervalId);
+  };
+}, [isLoggedIn]);
 
-  // Fetch all orders for the current customer
   const fetchOrders = async () => {
     if (!isLoggedIn) return;
-
+  
     try {
       setLoading(true);
       setError(null);
-
+  
+      // Store old order statuses before fetching new data
+      const oldOrderStatuses = {};
+      orders.forEach(order => {
+        oldOrderStatuses[order.id] = order.status;
+      });
+      
+      console.log('Old order statuses:', oldOrderStatuses);
+      
       const response = await orderApi.getOrders();
-
-      // Transform orders to match the format expected by the frontend
+      const newOrders = response.data.orders || [];
+      
+      console.log('Fetched new orders:', newOrders.length);
+      
+      // Check each new order for status changes
+      for (const newOrder of newOrders) {
+        const newOrderId = newOrder._id || newOrder.id;
+        
+        // Try to find the old order by ID or order number
+        let matched = false;
+        for (const oldOrderId in oldOrderStatuses) {
+          if (
+            oldOrderId === newOrderId || 
+            orders.find(o => o.id === oldOrderId)?.orderNumber === newOrder.orderNumber
+          ) {
+            matched = true;
+            const oldStatus = oldOrderStatuses[oldOrderId];
+            
+            // If status has changed
+            if (oldStatus && oldStatus !== newOrder.status) {
+              console.log(`Status changed for order #${newOrder.orderNumber}: ${oldStatus} -> ${newOrder.status}`);
+              
+              // Send a notification for the status change
+              try {
+                await sendLocalNotification(
+                  'Order Status Updated',
+                  `Order #${newOrder.orderNumber} is now ${formatStatus(newOrder.status)}`,
+                  { type: 'order', orderId: newOrderId, status: newOrder.status }
+                );
+                console.log('Notification sent for status change');
+              } catch (notifErr) {
+                console.error('Failed to send notification for status change:', notifErr);
+              }
+            }
+            break;
+          }
+        }
+        
+        if (!matched && orders.length > 0) {
+          console.log(`New order discovered: #${newOrder.orderNumber}`);
+        }
+      }
+  
+      // Continue with your existing transformation code
       const transformedOrders = response.data.orders?.map((order) => ({
         id: order._id || order.id,
         orderNumber: order.orderNumber,
@@ -69,13 +139,32 @@ items: order.items.map(item => {
         paymentMethod: order.paymentMethod,
         customerNotes: order.customerNotes,
       })) || [];
-
       setOrders(transformedOrders);
     } catch (err) {
       console.error('Error fetching orders:', err);
       setError(err.response?.data?.message || 'Failed to load orders');
     } finally {
       setLoading(false);
+    }
+  };
+
+
+  const formatStatus = (status) => {
+    if (!status) return 'Processing';
+
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'Pending';
+      case 'processing':
+        return 'Processing';
+      case 'out_for_delivery':
+        return 'Out for Delivery';
+      case 'delivered':
+        return 'Delivered';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return status;
     }
   };
 
@@ -195,7 +284,11 @@ const createOrder = async (orderData) => {
 
     // Use the direct order endpoint
     const response = await orderApi.createDirectOrder(orderData);
-
+    sendLocalNotification(
+      'Order Placed Successfully',
+      `Your order #${response.data.orderNumber} has been placed.`,
+      { type: 'order', orderId: response.data._id }
+    );
     // Refresh orders after creating a new one
     await fetchOrders();
 
@@ -264,7 +357,19 @@ const createDirectOrder = async (orderData) => {
 
     // Use the direct order endpoint
     const response = await orderApi.createDirectOrder(orderData);
-
+    console.log('Direct order created, response:', response.data);
+    
+    // Explicitly send local notification here
+    try {
+      await sendLocalNotification(
+        'Order Placed Successfully',
+        `Your order #${response.data.orderNumber || 'new'} has been placed.`,
+        { type: 'order', orderId: response.data._id || response.data.id }
+      );
+      console.log('Local notification sent for direct order');
+    } catch (notifErr) {
+      console.error('Failed to send notification for direct order:', notifErr);
+    }
     // Refresh orders after creating a new one
     await fetchOrders();
 
@@ -280,20 +385,32 @@ const createDirectOrder = async (orderData) => {
   // Cancel an order
   const cancelOrder = async (orderId, reason) => {
     if (!isLoggedIn) return false;
-
+  
     try {
       setLoading(true);
       setError(null);
-
+  
       await orderApi.cancelOrder(orderId, { reason });
-
+      
+      // Send a local notification for cancelled orders
+      try {
+        await sendLocalNotification(
+          'Order Cancelled',
+          'Your order has been cancelled successfully.',
+          { type: 'order', orderId: orderId, status: 'cancelled' }
+        );
+        console.log('Local notification sent for order cancellation');
+      } catch (notifErr) {
+        console.error('Failed to send notification for order cancellation:', notifErr);
+      }
+  
       // Update the local state to reflect the cancelled order
       setOrders((prevOrders) =>
         prevOrders.map((order) =>
           order.id === orderId ? { ...order, status: 'cancelled' } : order
         )
       );
-
+  
       return true;
     } catch (err) {
       console.error('Error cancelling order:', err);

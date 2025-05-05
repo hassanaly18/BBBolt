@@ -25,7 +25,10 @@ import colors from '../constants/colors';
 import { useOrder } from '../context/OrderContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useNotification } from '../context/NotificationContext';
+
 const CancelOrderModal = ({ isVisible, onClose, onConfirm, isLoading }) => {
+
   return (
     <Modal
       visible={isVisible}
@@ -59,6 +62,7 @@ const CancelOrderModal = ({ isVisible, onClose, onConfirm, isLoading }) => {
                 <Text style={styles.confirmButtonText}>Yes, Cancel Order</Text>
               )}
             </TouchableOpacity>
+          
           </View>
         </View>
       </View>
@@ -67,6 +71,7 @@ const CancelOrderModal = ({ isVisible, onClose, onConfirm, isLoading }) => {
 };
 
 export default function OrdersScreen() {
+  const { sendLocalNotification } = useNotification();
   const router = useRouter();
   const { orders, cancelOrder, loading, error, fetchOrders } = useOrder();
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -180,6 +185,22 @@ export default function OrdersScreen() {
       onPress={() => router.push(`/orders/${item.id}`)}
       activeOpacity={0.7}
     >
+
+<TouchableOpacity 
+  style={styles.testButton}
+  onPress={() => {
+    console.log('Test notification button pressed');
+    sendLocalNotification(
+      'Test Notification',
+      'This is a test notification',
+      { test: true }
+    );
+  }}
+>
+  <Text style={styles.testButtonText}>Test Notification</Text>
+</TouchableOpacity>
+
+
       <View style={styles.orderHeader}>
         <View style={styles.orderInfo}>
           <Text style={styles.orderNumber}>#{item.orderNumber}</Text>
@@ -505,6 +526,17 @@ itemPrice: {
     color: '#FF4D4F',
     fontSize: 14,
     fontWeight: '500',
+  },
+  testButton: {
+    backgroundColor: colors.primary,
+    padding: 10,
+    borderRadius: 5,
+    marginVertical: 10,
+    alignItems: 'center',
+  },
+  testButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   modalOverlay: {
     flex: 1,
