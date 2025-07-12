@@ -1,7 +1,7 @@
 import { View, Image, StyleSheet, Pressable } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import colors from '../constants/colors';
+import { colors } from '../constants/theme';
 
 export default function Navbar() {
   const router = useRouter();
@@ -32,7 +32,7 @@ export default function Navbar() {
           <FontAwesome name="search" size={24} color={colors.primary} />
         </Pressable>
         <Pressable 
-          onPress={() => router.push('/cart')}
+          onPress={() => router.push('/(tabs)/cart')}
           style={({ pressed }) => [
             styles.navButton,
             pressed && styles.pressedButton

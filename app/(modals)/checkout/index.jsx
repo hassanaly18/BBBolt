@@ -16,7 +16,7 @@ import { useOrder } from '../../context/OrderContext';
 import { useAuth } from '../../auth/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { ArrowLeft, MapPin } from 'lucide-react-native';
-import colors from '../../constants/colors';
+import { colors } from '../../constants/theme';
 import * as Location from 'expo-location';
 
 export default function CheckoutScreen() {

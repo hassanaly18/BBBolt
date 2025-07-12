@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import colors from '../constants/colors';
+import { colors } from '../constants/theme';
 
 export default function CategoryGrid({ categories, onPress }) {
   return (

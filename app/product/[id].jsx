@@ -36,12 +36,13 @@ import {
   ChevronRight,
   Share2,
 } from 'lucide-react-native';
-import { useCart } from '../../context/CartContext';
-import { vendorProductApi, vendorApi, customerApi } from '../../services/api';
-import { useLocation } from '../../context/LocationContext';
-import theme from '../../theme';
-import { useAuth } from '../../auth/AuthContext';
+import { useCart } from '../context/CartContext';
+import { vendorProductApi, vendorApi, customerApi } from '../services/api';
+import { useLocation } from '../context/LocationContext';
+import theme from '../constants/theme';
+import { useAuth } from '../auth/AuthContext';
 import { BlurView } from 'expo-blur'; // You'll need to install this dependency
+import ReviewsSection from '../components/ReviewsSection';
 
 const { width, height } = Dimensions.get('window');
 
@@ -274,7 +275,7 @@ export default function ProductDetails() {
         [
           {
             text: 'View Cart',
-            onPress: () => router.push('/cart'),
+            onPress: () => router.push('/(tabs)/cart'),
           },
           {
             text: 'Continue Shopping',
@@ -410,7 +411,7 @@ export default function ProductDetails() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => router.push('/cart')}
+              onPress={() => router.push('/(tabs)/cart')}
               style={styles.cartButton}
             >
               <ShoppingCart size={20} color={theme.colors.text.primary} />
@@ -443,6 +444,22 @@ export default function ProductDetails() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
+          onPress={() => setActiveTab('reviews')}
+          style={[
+            styles.tabItem,
+            activeTab === 'reviews' && styles.tabItemActive,
+          ]}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'reviews' && styles.tabTextActive,
+            ]}
+          >
+            Reviews
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           onPress={() => setActiveTab('compare')}
           style={[
             styles.tabItem,
@@ -460,8 +477,8 @@ export default function ProductDetails() {
         </TouchableOpacity>
       </View>
 
-      {/* Product Details */}
-      {activeTab === 'details' ? (
+      {/* Tab Content */}
+      {activeTab === 'details' && (
         <Animated.ScrollView
           style={styles.scrollView}
           onScroll={Animated.event(
@@ -485,7 +502,7 @@ export default function ProductDetails() {
               source={{ uri: product.image }}
               style={styles.image}
               resizeMode="contain"
-              defaultSource={require('../../../assets/images/no-shops.png')}
+              defaultSource={require('../../assets/images/no-shops.png')}
             />
 
             {/* Discount Badge */}
@@ -628,8 +645,20 @@ export default function ProductDetails() {
             <View style={{ height: 100 }} />
           </View>
         </Animated.ScrollView>
-      ) : (
-        /* Price Comparison Tab */
+      )}
+
+      {/* Reviews Tab */}
+      {activeTab === 'reviews' && (
+        <View style={styles.reviewsWrapper}>
+          <ReviewsSection 
+            vendorProductId={id}
+            productTitle={product.name}
+          />
+        </View>
+      )}
+
+      {/* Price Comparison Tab */}
+      {activeTab === 'compare' && (
         <View style={styles.comparisonWrapper}>
           {compLoading ? (
             <View style={styles.comparisonLoading}>
@@ -1248,6 +1277,11 @@ const styles = StyleSheet.create({
 
   // Comparison tab styles
   comparisonWrapper: {
+    flex: 1,
+    backgroundColor: theme.colors.background.main,
+  },
+  // Reviews tab styles
+  reviewsWrapper: {
     flex: 1,
     backgroundColor: theme.colors.background.main,
   },

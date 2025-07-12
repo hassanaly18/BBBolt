@@ -1,7 +1,7 @@
 //C:\Users\faeiz\Desktop\BBBolt\app\services\api.js
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_URL } from './apiConfig';
+import { API_URL } from './_apiConfig';
 
 // Create axios instance with base URL from config
 const api = axios.create({
@@ -186,16 +186,43 @@ export const cartApi = {
 export const orderApi = {
   createOrder: (data) => api.post('/orders', data),
   createDirectOrder: (data) => api.post('/orders/direct', data), // Add new endpoint for direct orders
-  getOrders: (params) => api.get('/orders', { params }),
-  getOrderById: (id) => api.get(`/orders/${id}`),
-  cancelOrder: (id, reason) => api.put(`/orders/${id}/cancel`, { reason }),
-  getOrderTracking: (id) => api.get(`/orders/${id}/tracking`),
-  // Customer order endpoints
+  // Customer order endpoints (these are the correct ones)
   getOrders: (params) => api.get('/customer/orders', { params }),
   getOrderById: (id) => api.get(`/customer/orders/${id}`),
   cancelOrder: (id, reason) =>
     api.put(`/customer/orders/${id}/cancel`, { reason }),
   getOrderTracking: (id) => api.get(`/customer/orders/${id}/tracking`),
+};
+
+// Recipe API endpoints
+export const recipeApi = {
+  generateRecipe: (cartItems) => api.post('/recipe/generate', { cartItems }),
+};
+
+// Review API endpoints
+export const reviewApi = {
+  // Submit a new review
+  submitReview: (data) => api.post('/reviews/submit', data),
+  
+  // Get reviews for a vendor product
+  getProductReviews: (vendorProductId, params = {}) => 
+    api.get(`/reviews/product/${vendorProductId}`, { params }),
+  
+  // Get customer's reviews
+  getCustomerReviews: (params = {}) => 
+    api.get('/reviews/my-reviews', { params }),
+  
+  // Get reviewable products for customer
+  getReviewableProducts: (params = {}) => 
+    api.get('/reviews/reviewable-products', { params }),
+  
+  // Update a review
+  updateReview: (reviewId, data) => 
+    api.put(`/reviews/${reviewId}`, data),
+  
+  // Delete a review
+  deleteReview: (reviewId) => 
+    api.delete(`/reviews/${reviewId}`),
 };
 
 export default api;

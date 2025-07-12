@@ -1,5 +1,6 @@
 //C:\Users\faeiz\Desktop\BBBolt\app\context\OrderContext.jsx
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { DeviceEventEmitter } from 'react-native';
 import { orderApi } from '../services/api';
 import { useAuth } from '../auth/AuthContext';
 import { useNotification } from './NotificationContext';
@@ -11,7 +12,95 @@ export function OrderProvider({ children }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isRefreshingFromNotification, setIsRefreshingFromNotification] = useState(false);
   const { isLoggedIn } = useAuth();
+
+  const fetchOrders = useCallback(async () => {
+    if (!isLoggedIn) {
+      return;
+    }
+  
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await orderApi.getOrders();
+      const newOrders = response.data.orders || [];
+      
+      // Transform orders and recalculate prices
+      const transformedOrders = response.data.orders?.map((order) => {
+        // First, transform the items and calculate discounted prices
+        const transformedItems = order.items.map(item => {
+          const basePrice = item.price;
+          let finalPrice = basePrice;
+
+          if (item.discountType === 'percentage') {
+            finalPrice = basePrice * (1 - item.discountValue / 100);
+          } else if (item.discountType === 'amount') {
+            finalPrice = Math.max(0, basePrice - item.discountValue);
+          }
+
+          return {
+            id: item.product._id || item.product.id,
+            name: item.product.title || item.product.name,
+            originalPrice: parseFloat(basePrice.toFixed(2)),
+            price: parseFloat(finalPrice.toFixed(2)),
+            discountType: item.discountType || null,
+            discountValue: item.discountValue || 0,
+            quantity: item.quantity,
+            image: item.product.imageUrl || item.product.image,
+          };
+        });
+
+        // Calculate the correct subtotal based on discounted prices
+        const correctSubtotal = transformedItems.reduce((sum, item) => {
+          return sum + (item.price * item.quantity);
+        }, 0);
+
+        // Calculate the correct total (discounted subtotal + delivery fee - order discount)
+        const deliveryFee = order.deliveryFee || 0;
+        const orderDiscount = order.orderDiscount || 0;
+        const correctTotal = correctSubtotal + deliveryFee - orderDiscount;
+
+        return {
+          id: order._id || order.id,
+          orderNumber: order.orderNumber,
+          date: new Date(order.createdAt || order.date)
+            .toISOString()
+            .split('T')[0],
+          status: order.status,
+          total: parseFloat(correctTotal.toFixed(2)),
+          subtotal: parseFloat(correctSubtotal.toFixed(2)),
+          deliveryFee: parseFloat(deliveryFee.toFixed(2)),
+          orderDiscount: parseFloat(orderDiscount.toFixed(2)),
+          items: transformedItems,
+          store: order.items[0]?.vendor?.name || 'Unknown Store',
+          storeLocation: order.items[0]?.vendor?.location?.formattedAddress || 
+                        order.items[0]?.vendor?.location?.address || 
+                        'Location not available',
+          deliveryAddress: order.deliveryAddress?.formattedAddress || 
+                          order.deliveryAddress?.address || 
+                          order.deliveryAddress || '',
+          contactPhone: order.contactPhone,
+          paymentMethod: order.paymentMethod,
+          customerNotes: order.customerNotes,
+          estimatedDelivery: order.estimatedDelivery,
+        };
+      }) || [];
+      setOrders(transformedOrders);
+    } catch (err) {
+      console.error('Error fetching orders:', err);
+      // Only set error if it's not a 401 (unauthorized) error
+      if (err.response?.status !== 401) {
+        setError(err.response?.data?.message || 'Failed to load orders');
+      } else {
+        // For 401 errors, just log and clear orders
+        setOrders([]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [isLoggedIn, sendLocalNotification]);
 
   // Load orders when the user logs in
   useEffect(() => {
@@ -21,133 +110,28 @@ export function OrderProvider({ children }) {
       // Clear orders when logged out
       setOrders([]);
     }
-  }, [isLoggedIn]);
-// Add this to your OrderContext.jsx
-useEffect(() => {
-  // Only poll when logged in
-  if (!isLoggedIn) return;
-  
-  console.log('Setting up order polling interval');
-  
-  // Set up interval to check for order updates every 15 seconds
-  const intervalId = setInterval(() => {
-    console.log('Polling for order updates...');
-    fetchOrders();
-  }, 15000); // 15 seconds
-  
-  // Clear interval on unmount or login state change
-  return () => {
-    console.log('Clearing order polling interval');
-    clearInterval(intervalId);
-  };
-}, [isLoggedIn]);
+  }, [isLoggedIn, fetchOrders]);
 
-  const fetchOrders = async () => {
+  // Listen for push notification events to immediately refresh orders
+  useEffect(() => {
     if (!isLoggedIn) return;
-  
-    try {
-      setLoading(true);
-      setError(null);
-  
-      // Store old order statuses before fetching new data
-      const oldOrderStatuses = {};
-      orders.forEach(order => {
-        oldOrderStatuses[order.id] = order.status;
-      });
-      
-      console.log('Old order statuses:', oldOrderStatuses);
-      
-      const response = await orderApi.getOrders();
-      const newOrders = response.data.orders || [];
-      
-      console.log('Fetched new orders:', newOrders.length);
-      
-      // Check each new order for status changes
-      for (const newOrder of newOrders) {
-        const newOrderId = newOrder._id || newOrder.id;
-        
-        // Try to find the old order by ID or order number
-        let matched = false;
-        for (const oldOrderId in oldOrderStatuses) {
-          if (
-            oldOrderId === newOrderId || 
-            orders.find(o => o.id === oldOrderId)?.orderNumber === newOrder.orderNumber
-          ) {
-            matched = true;
-            const oldStatus = oldOrderStatuses[oldOrderId];
-            
-            // If status has changed
-            if (oldStatus && oldStatus !== newOrder.status) {
-              console.log(`Status changed for order #${newOrder.orderNumber}: ${oldStatus} -> ${newOrder.status}`);
-              
-              // Send a notification for the status change
-              try {
-                await sendLocalNotification(
-                  'Order Status Updated',
-                  `Order #${newOrder.orderNumber} is now ${formatStatus(newOrder.status)}`,
-                  { type: 'order', orderId: newOrderId, status: newOrder.status }
-                );
-                console.log('Notification sent for status change');
-              } catch (notifErr) {
-                console.error('Failed to send notification for status change:', notifErr);
-              }
-            }
-            break;
-          }
-        }
-        
-        if (!matched && orders.length > 0) {
-          console.log(`New order discovered: #${newOrder.orderNumber}`);
-        }
-      }
-  
-      // Continue with your existing transformation code
-      const transformedOrders = response.data.orders?.map((order) => ({
-        id: order._id || order.id,
-        orderNumber: order.orderNumber,
-        date: new Date(order.createdAt || order.date)
-          .toISOString()
-          .split('T')[0],
-        status: order.status,
-        total: order.total,
-// after
-items: order.items.map(item => {
-  const basePrice = item.price;
-  let finalPrice = basePrice;
 
-  if (item.discountType === 'percentage') {
-    finalPrice = basePrice * (1 - item.discountValue / 100);
-  } else if (item.discountType === 'amount') {
-    finalPrice = Math.max(0, basePrice - item.discountValue);
-  }
+    const handleOrderStatusChanged = async (eventData) => {
+      console.log('Order status changed event received:', eventData);
+      // Immediately fetch fresh orders when a push notification is received
+      setIsRefreshingFromNotification(true);
+      await fetchOrders();
+      setIsRefreshingFromNotification(false);
+    };
 
-  return {
-    id: item.product._id || item.product.id,
-    name: item.product.title || item.product.name,
-    originalPrice: parseFloat(basePrice.toFixed(2)),
-    price: parseFloat(finalPrice.toFixed(2)),
-    discountType: item.discountType || null,
-    discountValue: item.discountValue || 0,
-    quantity: item.quantity,
-    image: item.product.imageUrl || item.product.image,
-  };
-})
-,
-        store: order.items[0]?.vendor?.name || 'Unknown Store',
-        deliveryAddress: order.deliveryAddress?.formattedAddress || '',
-        contactPhone: order.contactPhone,
-        paymentMethod: order.paymentMethod,
-        customerNotes: order.customerNotes,
-      })) || [];
-      setOrders(transformedOrders);
-    } catch (err) {
-      console.error('Error fetching orders:', err);
-      setError(err.response?.data?.message || 'Failed to load orders');
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Add event listener for order status changes from push notifications using DeviceEventEmitter
+    const subscription = DeviceEventEmitter.addListener('orderStatusChanged', handleOrderStatusChanged);
 
+    return () => {
+      // Remove the event listener
+      subscription.remove();
+    };
+  }, [isLoggedIn, fetchOrders]);
 
   const formatStatus = (status) => {
     if (!status) return 'Processing';
@@ -180,6 +164,40 @@ items: order.items.map(item => {
 
       // Transform the order to match the format expected by the frontend
       const order = response.data;
+      
+      // First, transform the items and calculate discounted prices
+      const transformedItems = order.items.map(item => {
+        const basePrice = item.price;
+        let finalPrice = basePrice;
+
+        if (item.discountType === 'percentage') {
+          finalPrice = basePrice * (1 - item.discountValue / 100);
+        } else if (item.discountType === 'amount') {
+          finalPrice = Math.max(0, basePrice - item.discountValue);
+        }
+
+        return {
+          id: item.product._id || item.product.id,
+          name: item.product.title || item.product.name,
+          originalPrice: parseFloat(basePrice.toFixed(2)),
+          price: parseFloat(finalPrice.toFixed(2)),
+          discountType: item.discountType || null,
+          discountValue: item.discountValue || 0,
+          quantity: item.quantity,
+          image: item.product.imageUrl || item.product.image,
+        };
+      });
+
+      // Calculate the correct subtotal based on discounted prices
+      const correctSubtotal = transformedItems.reduce((sum, item) => {
+        return sum + (item.price * item.quantity);
+      }, 0);
+
+      // Calculate the correct total (discounted subtotal + delivery fee - order discount)
+      const deliveryFee = order.deliveryFee || 0;
+      const orderDiscount = order.orderDiscount || 0;
+      const correctTotal = correctSubtotal + deliveryFee - orderDiscount;
+
       const transformedOrder = {
         id: order._id || order.id,
         orderNumber: order.orderNumber,
@@ -187,40 +205,33 @@ items: order.items.map(item => {
           .toISOString()
           .split('T')[0],
         status: order.status,
-        total: order.total,
-// after
-items: order.items.map(item => {
-  const basePrice = item.price;
-  let finalPrice = basePrice;
-
-  if (item.discountType === 'percentage') {
-    finalPrice = basePrice * (1 - item.discountValue / 100);
-  } else if (item.discountType === 'amount') {
-    finalPrice = Math.max(0, basePrice - item.discountValue);
-  }
-
-  return {
-    id: item.product._id || item.product.id,
-    name: item.product.title || item.product.name,
-    originalPrice: parseFloat(basePrice.toFixed(2)),
-    price: parseFloat(finalPrice.toFixed(2)),
-    discountType: item.discountType || null,
-    discountValue: item.discountValue || 0,
-    quantity: item.quantity,
-    image: item.product.imageUrl || item.product.image,
-  };
-}),
+        total: parseFloat(correctTotal.toFixed(2)),
+        subtotal: parseFloat(correctSubtotal.toFixed(2)),
+        deliveryFee: parseFloat(deliveryFee.toFixed(2)),
+        orderDiscount: parseFloat(orderDiscount.toFixed(2)),
+        items: transformedItems,
         store: order.items[0]?.vendor?.name || 'Unknown Store',
-        deliveryAddress: order.deliveryAddress?.formattedAddress || '',
+        storeLocation: order.items[0]?.vendor?.location?.formattedAddress || 
+                      order.items[0]?.vendor?.location?.address || 
+                      'Location not available',
+        deliveryAddress: order.deliveryAddress?.formattedAddress || 
+                        order.deliveryAddress?.address || 
+                        order.deliveryAddress || '',
         contactPhone: order.contactPhone,
         paymentMethod: order.paymentMethod,
         customerNotes: order.customerNotes,
+        estimatedDelivery: order.estimatedDelivery,
       };
 
       return transformedOrder;
     } catch (err) {
       console.error('Error fetching order:', err);
-      setError(err.response?.data?.message || 'Failed to get order details');
+      // Only set error if it's not a 401 (unauthorized) error
+      if (err.response?.status !== 401) {
+        setError(err.response?.data?.message || 'Failed to get order details');
+      } else {
+        console.log('User not authenticated, cannot fetch order');
+      }
       return null;
     } finally {
       setLoading(false);
@@ -228,190 +239,78 @@ items: order.items.map(item => {
   };
 
   // Create a new order
-// Create a new order
-// Updated createDirectOrder function in OrderContext.jsx
-const createOrder = async (orderData) => {
-  if (!isLoggedIn) return null;
+  const createOrder = async (orderData) => {
+    if (!isLoggedIn) return null;
 
-  try {
-    setLoading(true);
-    setError(null);
-
-    // Debug log incoming data
-    console.log('Creating direct order with data:', JSON.stringify({
-      items: orderData.items.map(i => ({
-        price: i.price,
-        quantity: i.quantity,
-        totalPrice: i.totalPrice
-      })),
-      subtotal: orderData.subtotal,
-      deliveryFee: orderData.deliveryFee,
-      total: orderData.total
-    }));
-
-    // Ensure all item properties are correctly set
-    if (orderData.items) {
-      orderData.items = orderData.items.map(item => ({
-        ...item,
-        // Ensure discount information is included
-        discountType: item.discountType || null,
-        discountValue: item.discountValue || 0,
-        // Make sure price is the discounted price
-        price: item.price,
-        // Make sure totalPrice is calculated using the discounted price
-        totalPrice: item.price * item.quantity
-      }));
-    }
-
-    // Recalculate subtotal to ensure it's based on the discounted prices
-    const calculatedSubtotal = orderData.items.reduce(
-      (sum, item) => sum + (item.price * item.quantity), 
-      0
-    );
-    
-    // Recalculate total
-    const calculatedTotal = calculatedSubtotal + orderData.deliveryFee;
-    
-    // Override the values to ensure they're correct
-    orderData.subtotal = calculatedSubtotal;
-    orderData.total = calculatedTotal;
-
-    console.log('Verified order data:', {
-      subtotal: orderData.subtotal,
-      deliveryFee: orderData.deliveryFee,
-      total: orderData.total
-    });
-
-    // Use the direct order endpoint
-    const response = await orderApi.createDirectOrder(orderData);
-    sendLocalNotification(
-      'Order Placed Successfully',
-      `Your order #${response.data.orderNumber} has been placed.`,
-      { type: 'order', orderId: response.data._id }
-    );
-    // Refresh orders after creating a new one
-    await fetchOrders();
-
-    return response.data;
-  } catch (err) {
-    console.error('Error creating direct order:', err);
-    setError(err.response?.data?.message || 'Failed to create order');
-    return null;
-  } finally {
-    setLoading(false);
-  }
-};
-// Modified createDirectOrder function for OrderContext.jsx
-// Updated createDirectOrder function in OrderContext.jsx
-const createDirectOrder = async (orderData) => {
-  if (!isLoggedIn) return null;
-
-  try {
-    setLoading(true);
-    setError(null);
-
-    // Debug log incoming data
-    console.log('Creating direct order with data:', JSON.stringify({
-      items: orderData.items.map(i => ({
-        price: i.price,
-        quantity: i.quantity,
-        totalPrice: i.totalPrice
-      })),
-      subtotal: orderData.subtotal,
-      deliveryFee: orderData.deliveryFee,
-      total: orderData.total
-    }));
-
-    // Ensure all item properties are correctly set
-    if (orderData.items) {
-      orderData.items = orderData.items.map(item => ({
-        ...item,
-        // Ensure discount information is included
-        discountType: item.discountType || null,
-        discountValue: item.discountValue || 0,
-        // Make sure price is the discounted price
-        price: item.price,
-        // Make sure totalPrice is calculated using the discounted price
-        totalPrice: item.price * item.quantity
-      }));
-    }
-
-    // Recalculate subtotal to ensure it's based on the discounted prices
-    const calculatedSubtotal = orderData.items.reduce(
-      (sum, item) => sum + (item.price * item.quantity), 
-      0
-    );
-    
-    // Recalculate total
-    const calculatedTotal = calculatedSubtotal + orderData.deliveryFee;
-    
-    // Override the values to ensure they're correct
-    orderData.subtotal = calculatedSubtotal;
-    orderData.total = calculatedTotal;
-
-    console.log('Verified order data:', {
-      subtotal: orderData.subtotal,
-      deliveryFee: orderData.deliveryFee,
-      total: orderData.total
-    });
-
-    // Use the direct order endpoint
-    const response = await orderApi.createDirectOrder(orderData);
-    console.log('Direct order created, response:', response.data);
-    
-    // Explicitly send local notification here
-    try {
-      await sendLocalNotification(
-        'Order Placed Successfully',
-        `Your order #${response.data.orderNumber || 'new'} has been placed.`,
-        { type: 'order', orderId: response.data._id || response.data.id }
-      );
-      console.log('Local notification sent for direct order');
-    } catch (notifErr) {
-      console.error('Failed to send notification for direct order:', notifErr);
-    }
-    // Refresh orders after creating a new one
-    await fetchOrders();
-
-    return response.data;
-  } catch (err) {
-    console.error('Error creating direct order:', err);
-    setError(err.response?.data?.message || 'Failed to create order');
-    return null;
-  } finally {
-    setLoading(false);
-  }
-};
-  // Cancel an order
-  const cancelOrder = async (orderId, reason) => {
-    if (!isLoggedIn) return false;
-  
     try {
       setLoading(true);
       setError(null);
-  
-      await orderApi.cancelOrder(orderId, { reason });
-      
-      // Send a local notification for cancelled orders
-      try {
-        await sendLocalNotification(
-          'Order Cancelled',
-          'Your order has been cancelled successfully.',
-          { type: 'order', orderId: orderId, status: 'cancelled' }
-        );
-        console.log('Local notification sent for order cancellation');
-      } catch (notifErr) {
-        console.error('Failed to send notification for order cancellation:', notifErr);
+
+      const response = await orderApi.createOrder(orderData);
+
+      // Add the new order to the local state
+      if (response.data && response.data.order) {
+        const newOrder = response.data.order;
+        setOrders(prevOrders => [newOrder, ...prevOrders]);
       }
-  
-      // Update the local state to reflect the cancelled order
-      setOrders((prevOrders) =>
-        prevOrders.map((order) =>
-          order.id === orderId ? { ...order, status: 'cancelled' } : order
-        )
-      );
-  
-      return true;
+
+      return response.data;
+    } catch (err) {
+      console.error('Error creating order:', err);
+      setError(err.response?.data?.message || 'Failed to create order');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Create a direct order
+  const createDirectOrder = async (orderData) => {
+    if (!isLoggedIn) return null;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await orderApi.createDirectOrder(orderData);
+
+      // Add the new order to the local state
+      if (response.data && response.data.order) {
+        const newOrder = response.data.order;
+        setOrders(prevOrders => [newOrder, ...prevOrders]);
+      }
+
+      return response.data;
+    } catch (err) {
+      console.error('Error creating direct order:', err);
+      setError(err.response?.data?.message || 'Failed to create order');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cancel an order
+  const cancelOrder = async (orderId, reason) => {
+    if (!isLoggedIn) return false;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await orderApi.cancelOrder(orderId, reason);
+
+      if (response.data) {
+        // Update the order status in local state
+        setOrders(prevOrders =>
+          prevOrders.map(order =>
+            order.id === orderId ? { ...order, status: 'cancelled' } : order
+          )
+        );
+        return true;
+      }
+
+      return false;
     } catch (err) {
       console.error('Error cancelling order:', err);
       setError(err.response?.data?.message || 'Failed to cancel order');
@@ -421,7 +320,7 @@ const createDirectOrder = async (orderData) => {
     }
   };
 
-  // Get order tracking details
+  // Get order tracking information
   const getOrderTracking = async (orderId) => {
     if (!isLoggedIn) return null;
 
@@ -432,47 +331,45 @@ const createDirectOrder = async (orderData) => {
       const response = await orderApi.getOrderTracking(orderId);
       return response.data;
     } catch (err) {
-      console.error('Error getting tracking information:', err);
-      setError(
-        err.response?.data?.message || 'Failed to get tracking information'
-      );
+      console.error('Error fetching order tracking:', err);
+      setError(err.response?.data?.message || 'Failed to get tracking info');
       return null;
     } finally {
       setLoading(false);
     }
   };
 
-  // Legacy method for compatibility with the existing frontend
+  // Add a new order to the state
   const addOrder = (order) => {
-    setOrders((prevOrders) => [...prevOrders, order]);
+    setOrders(prevOrders => [order, ...prevOrders]);
   };
 
-  // Legacy method for compatibility with the existing frontend
+  // Update order status
   const updateOrderStatus = (orderId, status) => {
-    setOrders((prevOrders) =>
-      prevOrders.map((order) =>
+    setOrders(prevOrders =>
+      prevOrders.map(order =>
         order.id === orderId ? { ...order, status } : order
       )
     );
   };
 
+  const contextValue = {
+    orders,
+    loading,
+    error,
+    fetchOrders,
+    getOrderById,
+    createOrder,
+    createDirectOrder,
+    cancelOrder,
+    getOrderTracking,
+    addOrder,
+    updateOrderStatus,
+    isRefreshingFromNotification,
+  };
+
   return (
-    <OrderContext.Provider
-      value={{
-        orders,
-        loading,
-        error,
-        fetchOrders,
-        getOrderById,
-        createOrder,
-        cancelOrder,
-        getOrderTracking,
-        createDirectOrder,
-        // Legacy methods
-        addOrder,
-        updateOrderStatus,
-      }}
-    >
+    <OrderContext.Provider value={contextValue}>
       {children}
     </OrderContext.Provider>
   );
@@ -486,4 +383,7 @@ export const useOrder = () => {
   return context;
 };
 
-export default OrderProvider;
+// Default export for Expo Router compatibility
+export default function OrderContextRoute() {
+  return null;
+}

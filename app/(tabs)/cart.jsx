@@ -29,6 +29,8 @@ import {
   Clock,
   ChevronRight,
   X,
+  ChefHat,
+  Sparkles,
 } from 'lucide-react-native';
 
 
@@ -37,12 +39,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { useCart } from '../context/CartContext';
 import { useOrder } from '../context/OrderContext';
+import { recipeApi } from '../services/api';
 
 import { useAuth } from '../auth/AuthContext';
 import { useLocation } from '../context/LocationContext';
-import theme from '../theme';
+import theme from '../constants/theme';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = width - 32;
 
 export default function CartScreen() {
@@ -73,6 +76,12 @@ export default function CartScreen() {
   const [selectedVendorId, setSelectedVendorId] = useState(null);
   const [phoneError, setPhoneError] = useState('');
   const phoneInputRef = useRef(null);
+
+  // Recipe generation state
+  const [recipeModalVisible, setRecipeModalVisible] = useState(false);
+  const [generatedRecipe, setGeneratedRecipe] = useState(null);
+  const [recipeLoading, setRecipeLoading] = useState(false);
+  const [recipeError, setRecipeError] = useState(null);
 
   // Parse coordinates from different possible formats
   const parseCoordinates = (locData) => {
@@ -190,38 +199,39 @@ console.log(
     }
   };
 
-  // Group items by vendor
+  // Group items by vendor when cart items change
   useEffect(() => {
-    const grouped = cartItems.reduce((acc, item) => {
-      const vendorId = item.vendor?.id || 'unknown';
-      const vendorName = item.vendor?.name || 'Unknown Vendor';
-      const vendorLocation = item.vendor?.location;
+    console.log('=== CART DEBUG: Cart Items Updated ===');
+    console.log('Cart items length:', cartItems.length);
+    
+    // Group items by vendor
+    const grouped = {};
+    cartItems.forEach((item) => {
+      const vendorId = item.vendorProduct?.vendor?._id || item.vendor?.id;
+      if (!vendorId) return;
 
-      if (!acc[vendorId]) {
-        // Calculate vendor distance if location data is available
-        const distance =  calculateDistance(vendorLocation)
-         
-
-        acc[vendorId] = {
+      if (!grouped[vendorId]) {
+        grouped[vendorId] = {
           vendorId,
-          vendorName,
-          vendorLocation,
-          distance,
-          deliveryTime: calculateDeliveryTime(distance),
+          vendorName: item.vendorProduct?.vendor?.name || item.vendor?.name,
+          vendor: item.vendorProduct?.vendor || item.vendor,
           items: [],
           subtotal: 0,
+          distance: calculateDistance(item.vendorProduct?.vendor?.location || item.vendor?.location),
+          deliveryTime: calculateDeliveryTime(calculateDistance(item.vendorProduct?.vendor?.location || item.vendor?.location)),
         };
       }
-
-      acc[vendorId].items.push(item); 
-      acc[vendorId].subtotal += item.finalPrice * item.quantity;
-
-
-      return acc;
-    }, {});
-
+      grouped[vendorId].items.push(item);
+      // Calculate subtotal properly
+      grouped[vendorId].subtotal += (item.finalPrice || item.price || 0) * item.quantity;
+    });
+    
     setGroupedItems(grouped);
-  }, [cartItems, location]);
+    
+    // Trigger recipe debug logs
+    console.log('=== TRIGGERING RECIPE DEBUG ===');
+    canGenerateRecipe();
+  }, [cartItems]);
 
   // Initialize phone number from user profile if available
   useEffect(() => {
@@ -238,11 +248,16 @@ console.log(
       }, 100);
     }
   }, [phoneModalVisible]);
+  // Fetch cart when component mounts and when focused
   useEffect(() => {
-    if (isFocused) {
+    console.log('=== CART DEBUG: Component Mounted or Focused ===');
+    console.log('isFocused:', isFocused, 'isLoggedIn:', isLoggedIn);
+    
+    if (isFocused && isLoggedIn) {
+      console.log('Fetching cart...');
       fetchCart();
     }
-  }, [isFocused]);
+  }, [isFocused, isLoggedIn]);
   // Refresh cart data
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -297,17 +312,165 @@ console.log(
 
   // Handle clearing cart
   const handleClearCart = () => {
-    if (cartItems.length === 0) return;
-
     Alert.alert(
       'Clear Cart',
-      'Are you sure you want to clear your entire cart?',
+      'Are you sure you want to remove all items from your cart?',
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Clear', style: 'destructive', onPress: () => clearCart() },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: clearCart,
+        },
       ]
     );
   };
+
+  // Recipe generation functions
+  const getRecipeEligibleItems = () => {
+    console.log('=== RECIPE DEBUG: Cart Items ===');
+    console.log('Total cart items:', cartItems.length);
+    
+    cartItems.forEach((item, index) => {
+      console.log(`Item ${index + 1}:`, {
+        productName: item.vendorProduct?.product?.title,
+        categoryName: item.vendorProduct?.product?.category?.name,
+        subCategoryName: item.vendorProduct?.product?.subCategory?.name,
+        food_reciepe: item.vendorProduct?.product?.subCategory?.food_reciepe,
+        fullSubCategory: item.vendorProduct?.product?.subCategory
+      });
+    });
+    
+    const eligibleItems = cartItems.filter(item => 
+      item.vendorProduct?.product?.subCategory?.food_reciepe === 1
+    );
+    
+    console.log('=== RECIPE DEBUG: Eligible Items ===');
+    console.log('Eligible items count:', eligibleItems.length);
+    eligibleItems.forEach((item, index) => {
+      console.log(`Eligible item ${index + 1}:`, item.vendorProduct?.product?.title);
+    });
+    
+    return eligibleItems;
+  };
+
+  const canGenerateRecipe = () => {
+    const eligibleCount = getRecipeEligibleItems().length;
+    const canGenerate = eligibleCount >= 5;
+    console.log('=== RECIPE DEBUG: Can Generate ===');
+    console.log('Eligible count:', eligibleCount, 'Can generate:', canGenerate);
+    return canGenerate;
+  };
+
+  const handleGenerateRecipe = async () => {
+    if (!canGenerateRecipe()) return;
+
+    setRecipeLoading(true);
+    setRecipeError(null);
+    setRecipeModalVisible(true);
+
+    try {
+      console.log('Generating recipe with cart items:', cartItems);
+      const response = await recipeApi.generateRecipe(cartItems);
+      
+      if (response.data && response.data.success) {
+        setGeneratedRecipe(response.data.data);
+      } else {
+        setRecipeError('Failed to generate recipe');
+      }
+    } catch (error) {
+      console.error('Error generating recipe:', error);
+      
+      // Handle specific error cases
+      if (error.response?.data?.error === 'GROQ_SDK_NOT_INSTALLED') {
+        setRecipeError('Recipe generation service is temporarily unavailable. The Groq SDK needs to be installed on the server.');
+      } else if (error.response?.status === 503) {
+        setRecipeError('Recipe generation service is currently unavailable. Please try again later.');
+      } else {
+        setRecipeError(error.response?.data?.message || 'An error occurred while generating the recipe');
+      }
+    } finally {
+      setRecipeLoading(false);
+    }
+  };
+
+  const handleCloseRecipeModal = () => {
+    setRecipeModalVisible(false);
+    setGeneratedRecipe(null);
+    setRecipeError(null);
+  };
+
+  const renderRecipeModal = () => (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={recipeModalVisible}
+      onRequestClose={handleCloseRecipeModal}
+    >
+      <View style={styles.recipeModalOverlay}>
+        <View style={styles.recipeModalContent}>
+          <View style={styles.recipeModalHeader}>
+            <View style={styles.recipeModalTitleContainer}>
+              <ChefHat size={24} color={theme.colors.primary.main} />
+              <Text style={styles.recipeModalTitle}>AI Recipe Generator</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.recipeModalCloseButton}
+              onPress={handleCloseRecipeModal}
+            >
+              <X size={24} color={theme.colors.text.secondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.recipeModalBody}>
+            {recipeLoading && (
+              <View style={styles.recipeLoadingContainer}>
+                <ActivityIndicator size="large" color={theme.colors.primary.main} />
+                <Text style={styles.recipeLoadingText}>
+                  Generating your Pakistani recipe...
+                </Text>
+                <View style={styles.recipeLoadingDots}>
+                  <Sparkles size={16} color={theme.colors.primary.main} />
+                  <Text style={styles.recipeLoadingSubtext}>
+                    Using AI to create the perfect dish with your ingredients
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {recipeError && (
+              <View style={styles.recipeErrorContainer}>
+                <Text style={styles.recipeErrorText}>{recipeError}</Text>
+                <TouchableOpacity
+                  style={styles.recipeRetryButton}
+                  onPress={handleGenerateRecipe}
+                >
+                  <Text style={styles.recipeRetryButtonText}>Try Again</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {generatedRecipe && (
+              <View style={styles.recipeContainer}>
+                <Text style={styles.recipeContent}>
+                  {generatedRecipe.recipe}
+                </Text>
+                
+                <View style={styles.recipeFooter}>
+                  <Text style={styles.recipeFooterText}>
+                    Recipe generated using {generatedRecipe.total_items} ingredients from your cart
+                  </Text>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 
   // Handle checkout
   const handleCheckout = () => {
@@ -567,15 +730,15 @@ const processDirectOrder = async (vendorId, contactPhone) => {
   {item.discountType && item.discountValue ? (
     <View>
       <Text style={styles.itemOriginalPrice}>
-        Rs. {item.originalPrice.toLocaleString()}
+        Rs. {(item.originalPrice || 0).toLocaleString()}
       </Text>
       <Text style={styles.itemPrice}>
-        Rs. {item.finalPrice.toLocaleString()}
+        Rs. {(item.finalPrice || 0).toLocaleString()}
       </Text>
     </View>
   ) : (
     <Text style={styles.itemPrice}>
-      Rs. {item.price.toLocaleString()}
+      Rs. {(item.price || 0).toLocaleString()}
     </Text>
   )}
 
@@ -632,7 +795,7 @@ const processDirectOrder = async (vendorId, contactPhone) => {
         <View style={styles.vendorFooterLeft}>
           <Text style={styles.subtotalLabel}>Subtotal</Text>
           <Text style={styles.subtotalValue}>
-            Rs. {vendorGroup.subtotal.toLocaleString()}
+            Rs. {(vendorGroup.subtotal || 0).toLocaleString()}
           </Text>
         </View>
 
@@ -796,36 +959,50 @@ const processDirectOrder = async (vendorId, contactPhone) => {
                 <Text style={styles.totalValue}>
                   Rs.{' '}
                   {(
-                    getCartTotal() +
+                    (getCartTotal() || 0) +
                     Object.keys(groupedItems).length * 40
                   ).toLocaleString()}
                 </Text>
               </View>
 
+              {/* Recipe Generation Button */}
               <TouchableOpacity
-                style={styles.checkoutButton}
-                onPress={handleCheckout}
-                disabled={cartLoading || orderLoading || isProcessing}
+                style={[
+                  styles.recipeButton,
+                  !canGenerateRecipe() && styles.recipeButtonDisabled
+                ]}
+                onPress={handleGenerateRecipe}
+                disabled={!canGenerateRecipe() || recipeLoading}
               >
                 <LinearGradient
-                  colors={[
-                    theme.colors.primary.main,
-                    theme.colors.primary.dark,
+                  colors={canGenerateRecipe() ? [
+                    theme.colors.secondary.main,
+                    theme.colors.secondary.dark,
+                  ] : [
+                    '#ccc',
+                    '#aaa',
                   ]}
-                  style={styles.checkoutGradient}
+                  style={styles.recipeButtonGradient}
                 >
-                  {orderLoading || isProcessing ? (
+                  {recipeLoading ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <>
-                      <Text style={styles.checkoutText}>
-                        Proceed to Checkout
+                      <ChefHat size={18} color="#fff" />
+                      <Text style={styles.recipeButtonText}>
+                        Generate Recipe ({(() => {
+                          const count = getRecipeEligibleItems().length;
+                          console.log('=== RECIPE BUTTON DEBUG ===');
+                          console.log('Recipe eligible count for button:', count);
+                          return count;
+                        })()}/5)
                       </Text>
-                      <ChevronRight size={20} color="#fff" />
                     </>
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+
+
             </View>
           </View>
         </>
@@ -833,6 +1010,7 @@ const processDirectOrder = async (vendorId, contactPhone) => {
 
       {/* Phone Input Modal */}
       {renderPhoneModal()}
+      {renderRecipeModal()}
     </SafeAreaView>
   );
 }
@@ -1126,8 +1304,10 @@ const styles = StyleSheet.create({
     color: theme.colors.primary.main,
   },
   checkoutButton: {
+    width: '100%',
     height: 50,
     borderRadius: 25,
+    marginTop: 12,
     overflow: 'hidden',
   },
   checkoutGradient: {
@@ -1141,6 +1321,31 @@ const styles = StyleSheet.create({
     color: 'white',
     ...theme.typography.button,
     marginRight: 8,
+  },
+
+  // Recipe generation button styles
+  recipeButton: {
+    width: '100%',
+    height: 45,
+    borderRadius: 22,
+    marginTop: 12,
+    overflow: 'hidden',
+  },
+  recipeButtonDisabled: {
+    opacity: 0.6,
+  },
+  recipeButtonGradient: {
+    width: '100%',
+    height: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recipeButtonText: {
+    color: 'white',
+    ...theme.typography.button,
+    marginLeft: 8,
+    fontSize: 14,
   },
 
   // Phone modal styles
@@ -1218,5 +1423,113 @@ const styles = StyleSheet.create({
   modalButtonText: {
     color: '#fff',
     ...theme.typography.button,
+  },
+
+  // Recipe modal styles
+  recipeModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  recipeModalContent: {
+    width: width * 0.9,
+    backgroundColor: theme.colors.background.default,
+    borderRadius: 15,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 10,
+      },
+    }),
+  },
+  recipeModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  recipeModalTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recipeModalTitle: {
+    ...theme.typography.h3,
+    color: theme.colors.text.primary,
+    marginLeft: 8,
+  },
+  recipeModalCloseButton: {
+    padding: 8,
+  },
+  recipeModalBody: {
+    padding: 16,
+    maxHeight: height * 0.6, // Limit height to 60% of screen
+  },
+  recipeLoadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  recipeLoadingText: {
+    ...theme.typography.h4,
+    color: theme.colors.text.primary,
+    marginTop: 10,
+  },
+  recipeLoadingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 5,
+  },
+  recipeLoadingSubtext: {
+    ...theme.typography.caption,
+    color: theme.colors.text.secondary,
+    marginLeft: 5,
+  },
+  recipeErrorContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  recipeErrorText: {
+    ...theme.typography.body1,
+    color: theme.colors.error,
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  recipeRetryButton: {
+    backgroundColor: theme.colors.primary.main,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+  },
+  recipeRetryButtonText: {
+    color: '#fff',
+    ...theme.typography.button,
+  },
+  recipeContainer: {
+    backgroundColor: '#f9f7fc',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  recipeContent: {
+    ...theme.typography.body1,
+    color: theme.colors.text.primary,
+    lineHeight: 22,
+    marginBottom: 15,
+  },
+  recipeFooter: {
+    alignItems: 'center',
+  },
+  recipeFooterText: {
+    ...theme.typography.caption,
+    color: theme.colors.text.secondary,
   },
 });

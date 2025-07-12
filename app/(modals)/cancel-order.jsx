@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import { X } from 'lucide-react-native';
-import colors from '../constants/colors';
+import { colors } from '../constants/theme';
 
 export default function CancelOrderModal({ isVisible, onClose, onConfirm }) {
   return (

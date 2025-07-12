@@ -23,9 +23,11 @@ import {
   CheckCircle,
   XCircle,
 } from 'lucide-react-native';
-import colors from '../../constants/colors';
-import { useOrder } from '../../context/OrderContext';
+import { colors } from '../constants/theme';
+import { useOrder } from '../context/OrderContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ReviewButton from '../components/ReviewButton';
+import ReviewModal from '../components/ReviewModal';
 
 export default function OrderDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -36,6 +38,8 @@ export default function OrderDetailsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingOrder, setLoadingOrder] = useState(true);
   const [error, setError] = useState(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
   // Format date to a more readable format
   const formatDate = (dateString) => {
@@ -331,7 +335,7 @@ export default function OrderDetailsScreen() {
               <Image
                 source={{ uri: item.image }}
                 style={styles.itemImage}
-                defaultSource={require('../../../assets/images/no-shops.png')}
+                defaultSource={require('../../assets/images/no-shops.png')}
                 resizeMode="cover"
               />
               <View style={styles.itemInfo}>
@@ -342,6 +346,30 @@ export default function OrderDetailsScreen() {
                 <Text style={styles.itemPrice}>
                   Rs {(item.price * item.quantity).toFixed(2)}
                 </Text>
+                
+                {/* Review Button - Only show for delivered orders */}
+                {order.status.toLowerCase() === 'delivered' && (
+                  <View style={styles.reviewButtonContainer}>
+                    <ReviewButton
+                      vendorProductId={item.vendorProduct || null}
+                      orderId={order.id}
+                      product={{
+                        title: item.name,
+                        vendor: { name: order.store },
+                        vendorProduct: item.vendorProduct || null
+                      }}
+                      onReviewSubmitted={() => {
+                        setSelectedProduct({
+                          title: item.name,
+                          vendor: { name: order.store },
+                          vendorProduct: item.vendorProduct || null
+                        });
+                        setShowReviewModal(true);
+                      }}
+                      style={styles.reviewButton}
+                    />
+                  </View>
+                )}
               </View>
             </View>
           ))}
@@ -485,6 +513,21 @@ export default function OrderDetailsScreen() {
           </View>
         )}
       </ScrollView>
+      
+      {/* Review Modal */}
+      <ReviewModal
+        visible={showReviewModal}
+        onClose={() => {
+          setShowReviewModal(false);
+          setSelectedProduct(null);
+        }}
+        product={selectedProduct}
+        orderId={order?.id}
+        onReviewSubmitted={() => {
+          // Refresh order details after review submission
+          loadOrderDetails();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -638,6 +681,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
+  },
+  reviewButtonContainer: {
+    marginTop: 8,
+  },
+  reviewButton: {
+    alignSelf: 'flex-start',
   },
   infoCard: {
     backgroundColor: colors.background.main,
