@@ -41,9 +41,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { vendorProductApi, categoryApi } from '../services/api';
 import { useLocation } from '../context/LocationContext';
 import { useCart } from '../context/CartContext';
-import theme from '../theme';
+import { useAuth } from '../auth/AuthContext';
+import theme from '../constants/theme';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
+import Header from '../components/Header';
+import SideMenu from '../components/SideMenu';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.7;
@@ -53,6 +56,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { location, getLocationParams } = useLocation();
   const { addToCart } = useCart();
+  const { isLoggedIn } = useAuth();
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const [vendorProducts, setVendorProducts] = useState([]);
@@ -63,6 +67,7 @@ export default function HomeScreen() {
   const [trendingProducts, setTrendingProducts] = useState([]);
   const [headerVisible, setHeaderVisible] = useState(false);
   const [gridView, setGridView] = useState(false);
+  const [sideMenuOpen, setSideMenuOpen] = useState(false);
 
   // Animation values for staggered loading
   const animatedValues = useRef(
@@ -221,7 +226,7 @@ export default function HomeScreen() {
 
   // Fetch categories + vendor products (optionally by category)
   const fetchData = async (categoryId = null) => {
-    if (!location) return;
+    if (!location || !isLoggedIn) return;
     setLoading(true);
     try {
       const locParams = getLocationParams();
@@ -287,12 +292,31 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
-    if (location) fetchData();
-  }, [location]);
+    if (location && isLoggedIn) fetchData();
+  }, [location, isLoggedIn]);
+
+  // Clear data when user logs out
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setVendorProducts([]);
+      setTrendingProducts([]);
+      setCategories([]);
+      setSelectedCategory(null);
+    }
+  }, [isLoggedIn]);
 
   const onRefresh = () => {
+    if (!isLoggedIn) return;
     setRefreshing(true);
     fetchData(selectedCategory);
+  };
+
+  const handleMenuPress = () => {
+    setSideMenuOpen(true);
+  };
+
+  const handleMenuClose = () => {
+    setSideMenuOpen(false);
   };
 
   const renderCategory = ({ item, index }) => (
@@ -307,21 +331,21 @@ export default function HomeScreen() {
       <LinearGradient
         colors={
           selectedCategory === item._id
-            ? [theme.colors.primary.main, theme.colors.primary.light]
-            : ['#f8f8f8', '#ffffff']
+            ? theme.colors.gradients.primary
+            : theme.colors.gradients.card
         }
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.categoryIcon}
+        style={[
+          styles.categoryIcon,
+          selectedCategory === item._id && styles.categoryIconSelected
+        ]}
       >
-        {/* Replace the Text component with the icon */}
         {selectedCategory === item._id
-          ? // White icon when selected
-            React.cloneElement(getCategoryIcon(item.name), {
+          ? React.cloneElement(getCategoryIcon(item.name), {
               color: theme.colors.primary.contrastText,
             })
-          : // Normal colored icon when not selected
-            getCategoryIcon(item.name)}
+          : getCategoryIcon(item.name)}
       </LinearGradient>
       <Text
         style={[
@@ -383,13 +407,16 @@ export default function HomeScreen() {
               defaultSource={require('../../assets/images/no-shops.png')}
             />
             {hasDiscount && (
-              <View style={styles.discountBadge}>
+              <LinearGradient
+                colors={theme.colors.gradients.secondary}
+                style={styles.discountBadge}
+              >
                 <Text style={styles.discountText}>
                   {vp.discountType === 'percentage'
                     ? `${vp.discountValue}% OFF`
                     : `Rs ${vp.discountValue} OFF`}
                 </Text>
-              </View>
+              </LinearGradient>
             )}
             {!vp.inStock && (
               <View style={styles.outOfStockBadge}>
@@ -481,35 +508,9 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-
-      {/* Animated Header Background */}
-      <Animated.View
-        style={[styles.headerBackground, { opacity: headerOpacity }]}
-      />
-
-      {/* Top Bar */}
-      <View style={styles.topBar}>
-        <View>
-          <Text style={styles.welcomeText}>Good Morning</Text>
-          <Text style={styles.locationText}>
-            <MapPin size={12} color={theme.colors.primary.main} /> Current
-            Location
-          </Text>
-        </View>
-        <View style={styles.topBarIcons}>
-          <TouchableOpacity style={styles.iconButton}>
-            <Bell size={20} color={theme.colors.text.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => router.push('/cart')}
-          >
-            <ShoppingCart size={20} color={theme.colors.text.primary} />
-          </TouchableOpacity>
-        </View>
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
+      {/* Header with menu button */}
+      <Header onMenuPress={handleMenuPress} />
 
       {/* Main Content */}
       <ScrollView
@@ -529,17 +530,6 @@ export default function HomeScreen() {
           <Text style={styles.title}>Discover Nearby</Text>
           <Text style={styles.subtitle}>Fresh groceries at your doorstep</Text>
         </View>
-
-        {/* Search Bar */}
-        <TouchableOpacity
-          style={styles.search}
-          onPress={() => router.push('/search')}
-        >
-          <Search size={18} color={theme.colors.text.secondary} />
-          <Text style={styles.searchText}>
-            Search for products or stores...
-          </Text>
-        </TouchableOpacity>
 
         {/* Categories */}
         <View style={styles.sectionHeader}>
@@ -640,6 +630,9 @@ export default function HomeScreen() {
         {/* Footer Spacer */}
         <View style={styles.footerSpacer} />
       </ScrollView>
+
+      {/* Side Menu */}
+      <SideMenu isOpen={sideMenuOpen} onClose={handleMenuClose} />
     </SafeAreaView>
   );
 }
@@ -669,35 +662,7 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    zIndex: 10,
-  },
-  welcomeText: {
-    fontSize: 14,
-    color: theme.colors.text.secondary,
-  },
-  locationText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
-  },
-  topBarIcons: {
-    flexDirection: 'row',
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-    backgroundColor: theme.colors.background.paper,
-    borderRadius: 20,
-  },
+
   header: {
     padding: 16,
     paddingTop: 8,
@@ -712,25 +677,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: theme.colors.text.secondary,
-  },
-  search: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginVertical: 12,
-    backgroundColor: theme.colors.background.paper,
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  searchText: {
-    marginLeft: 10,
-    color: theme.colors.text.secondary,
-    flex: 1,
   },
 
   sectionHeader: {
@@ -773,11 +719,18 @@ const styles = StyleSheet.create({
     borderRadius: CATEGORY_SIZE / 2,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.colors.primary.main,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 4,
+  },
+  categoryIconSelected: {
+    shadowColor: theme.colors.primary.main,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
   },
   categoryInitial: {
     fontSize: 24,
@@ -885,18 +838,18 @@ const styles = StyleSheet.create({
 
   card: {
     width: CARD_WIDTH,
-    backgroundColor: theme.colors.background.default,
+    backgroundColor: theme.colors.background.card,
     borderRadius: 16,
     overflow: 'hidden',
     marginVertical: 8,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 5 },
+        shadowColor: theme.colors.primary.main,
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
       },
-      android: { elevation: 5 },
+      android: { elevation: 8 },
     }),
   },
   cardImageContainer: {
@@ -1019,11 +972,16 @@ const styles = StyleSheet.create({
   },
   addBtn: {
     backgroundColor: theme.colors.primary.main,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: theme.colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
     ...Platform.select({
       ios: {
         shadowColor: theme.colors.primary.dark,

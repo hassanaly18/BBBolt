@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from './AuthContext';
-import colors from '../constants/colors';
+import { colors } from '../constants/theme';
 import { CheckCircle, XCircle, RefreshCw } from 'lucide-react-native';
 
 export default function VerifyEmailScreen() {

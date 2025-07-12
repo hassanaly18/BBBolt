@@ -45,7 +45,7 @@ export function AuthProvider({ children }) {
         router.replace('/');
       }
     }
-  }, [user, loading, segments]);
+  }, [user, loading]); // Remove segments and router from dependencies
 
   // Load user profile from API
   const loadUserProfile = async () => {

@@ -36,7 +36,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { customerApi, categoryApi } from '../services/api';
 import { useLocation } from '../context/LocationContext';
 import { useCart } from '../context/CartContext';
-import theme from '../theme';
+import theme from '../constants/theme';
 
 const { width } = Dimensions.get('window');
 const PRODUCT_CARD_WIDTH = width - 32;
@@ -59,6 +59,18 @@ const sortOptions = [
   { value: 'farthest', label: 'Farthest First' },
   { value: 'cheapest', label: 'Price: Low to High' },
   { value: 'expensive', label: 'Price: High to Low' },
+  { value: 'rating_high', label: 'Highest Rated' },
+  { value: 'rating_low', label: 'Lowest Rated' },
+];
+
+// Rating filter options
+const ratingOptions = [
+  { value: null, label: 'All Ratings' },
+  { value: 5, label: '5 Stars' },
+  { value: 4, label: '4+ Stars' },
+  { value: 3, label: '3+ Stars' },
+  { value: 2, label: '2+ Stars' },
+  { value: 1, label: '1+ Stars' },
 ];
 
 export default function SearchScreen() {
@@ -80,9 +92,11 @@ export default function SearchScreen() {
   // New state for filters and sorting
   const [selectedRadius, setSelectedRadius] = useState(1); // Default to 1km
   const [sortBy, setSortBy] = useState('nearest'); // Default sorting
+  const [selectedRating, setSelectedRating] = useState(null); // Default to all ratings
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showSortOptions, setShowSortOptions] = useState(false);
   const [showRadiusOptions, setShowRadiusOptions] = useState(false);
+  const [showRatingOptions, setShowRatingOptions] = useState(false);
   const [showSubCategoryOptions, setShowSubCategoryOptions] = useState(false);
   const numColumns = 2;
   // Load categories
@@ -231,8 +245,18 @@ export default function SearchScreen() {
       let vendorResults = response.data?.vendors || [];
       let productResults = response.data?.products || [];
       
-      // Sort the results based on selection
-      const sortResults = () => {
+      // Filter and sort the results based on selection
+      const filterAndSortResults = () => {
+        // Filter by rating if selected
+        if (selectedRating !== null) {
+          productResults = productResults.filter(product => {
+            // Get average rating from product data (you may need to adjust this based on your API response)
+            const avgRating = product.averageRating || product.product?.averageRating || 0;
+            return avgRating >= selectedRating;
+          });
+        }
+
+        // Sort the results based on selection
         switch (sortBy) {
           case 'nearest':
             vendorResults = vendorResults.sort((a, b) => 
@@ -266,13 +290,29 @@ export default function SearchScreen() {
               return priceB - priceA;
             });
             break;
+          case 'rating_high':
+            // Sort by rating (highest first)
+            productResults = productResults.sort((a, b) => {
+              const ratingA = a.averageRating || a.product?.averageRating || 0;
+              const ratingB = b.averageRating || b.product?.averageRating || 0;
+              return ratingB - ratingA;
+            });
+            break;
+          case 'rating_low':
+            // Sort by rating (lowest first)
+            productResults = productResults.sort((a, b) => {
+              const ratingA = a.averageRating || a.product?.averageRating || 0;
+              const ratingB = b.averageRating || b.product?.averageRating || 0;
+              return ratingA - ratingB;
+            });
+            break;
           default:
             break;
         }
       };
       
-      // Apply sorting
-      sortResults();
+      // Apply filtering and sorting
+      filterAndSortResults();
       
       setResults({ 
         vendors: vendorResults, 
@@ -302,7 +342,7 @@ export default function SearchScreen() {
   
       return () => clearTimeout(delaySearch);
     }
-  }, [searchTerm, selectedCategory, selectedSubCategory, selectedRadius, sortBy, location]);
+  }, [searchTerm, selectedCategory, selectedSubCategory, selectedRadius, sortBy, selectedRating, location]);
 
   // Apply filters and close modal
   const applyFilters = () => {
@@ -316,6 +356,7 @@ export default function SearchScreen() {
     setSelectedSubCategory(null);
     setSelectedRadius(1);
     setSortBy('nearest');
+    setSelectedRating(null);
     setShowFilterModal(false);
   };
 
@@ -394,6 +435,17 @@ export default function SearchScreen() {
           <Text style={styles.gridVendorName} numberOfLines={1}>
             {item.vendor?.name || 'Vendor'}
           </Text>
+
+          <View style={styles.gridRatingContainer}>
+            <Star
+              size={12}
+              color={theme.colors.secondary.main}
+              fill={theme.colors.secondary.main}
+            />
+            <Text style={styles.gridRatingText}>
+              {item.averageRating || item.product?.averageRating || 'N/A'}
+            </Text>
+          </View>
   
           <View style={styles.gridProductBottom}>
             <View style={styles.gridPriceContainer}>
@@ -521,7 +573,9 @@ export default function SearchScreen() {
                 color={theme.colors.secondary.main}
                 fill={theme.colors.secondary.main}
               />
-              <Text style={styles.ratingText}>4.5</Text>
+              <Text style={styles.ratingText}>
+                {item.averageRating || item.product?.averageRating || 'N/A'}
+              </Text>
             </View>
           </View>
   
@@ -591,6 +645,11 @@ export default function SearchScreen() {
     
     if (selectedRadius !== 1) {
       summary.push(`${selectedRadius}km`);
+    }
+    
+    if (selectedRating !== null) {
+      const ratingName = ratingOptions.find(option => option.value === selectedRating)?.label;
+      if (ratingName) summary.push(ratingName);
     }
     
     if (sortBy !== 'nearest') {
@@ -663,8 +722,13 @@ export default function SearchScreen() {
           style={styles.filterButton}
           onPress={() => setShowFilterModal(true)}
         >
-          <SlidersHorizontal size={16} color={theme.colors.primary.main} />
-          <Text style={styles.filterButtonText}>{getFilterSummary()}</Text>
+          <LinearGradient
+            colors={theme.colors.gradients.primary}
+            style={styles.filterButtonGradient}
+          >
+            <SlidersHorizontal size={16} color={theme.colors.primary.contrastText} />
+            <Text style={styles.filterButtonText}>{getFilterSummary()}</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
 
@@ -902,6 +966,52 @@ export default function SearchScreen() {
                 </View>
               </View>
 
+              {/* Rating Filter Section */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Minimum Rating</Text>
+                <View style={styles.dropdownSelector}>
+                  <TouchableOpacity 
+                    style={styles.dropdownButton}
+                    onPress={() => setShowRatingOptions(!showRatingOptions)}
+                  >
+                    <Text style={styles.dropdownButtonText}>
+                      {ratingOptions.find(opt => opt.value === selectedRating)?.label || 'All Ratings'}
+                    </Text>
+                    <ChevronDown size={16} color={theme.colors.text.secondary} />
+                  </TouchableOpacity>
+                  
+                  {showRatingOptions && (
+                    <View style={styles.dropdownOptions}>
+                      {ratingOptions.map(option => (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.dropdownOption,
+                            selectedRating === option.value && styles.dropdownOptionSelected
+                          ]}
+                          onPress={() => {
+                            setSelectedRating(option.value);
+                            setShowRatingOptions(false);
+                          }}
+                        >
+                          <Text 
+                            style={[
+                              styles.dropdownOptionText,
+                              selectedRating === option.value && styles.dropdownOptionTextSelected
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                          {selectedRating === option.value && (
+                            <Check size={16} color={theme.colors.primary.main} />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+
               {/* Sort By Section */}
               <View style={styles.filterSection}>
                 <Text style={styles.filterSectionTitle}>Sort By</Text>
@@ -1048,18 +1158,24 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   filterButton: {
+    marginLeft: 8,
+  },
+  filterButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 20,
-    marginLeft: 8,
+    shadowColor: theme.colors.primary.main,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   filterButtonText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: theme.colors.primary.main,
+    fontWeight: '600',
+    color: theme.colors.primary.contrastText,
     marginLeft: 6,
   },
   loadingContainer: {
@@ -1188,7 +1304,18 @@ const styles = StyleSheet.create({
   gridVendorName: {
     fontSize: 12,
     color: theme.colors.text.secondary,
+    marginBottom: 4,
+  },
+  gridRatingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 6,
+  },
+  gridRatingText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: theme.colors.secondary.main,
+    marginLeft: 3,
   },
   gridProductBottom: {
     marginTop: 'auto',

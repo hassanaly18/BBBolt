@@ -17,7 +17,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import theme from '../../app/theme';
+import theme from '../constants/theme';
 
 const { width } = Dimensions.get('window');
 const TAB_WIDTH = width / 4; // 4 tabs

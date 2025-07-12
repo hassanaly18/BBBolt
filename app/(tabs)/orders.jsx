@@ -1,68 +1,62 @@
 //C:\Users\faeiz\Desktop\BBBolt\app\(tabs)\orders.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Image,
-  Modal,
   RefreshControl,
   ActivityIndicator,
   Alert,
+  Modal,
+  SafeAreaView,
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import {
-  Package,
-  ChevronRight,
-  ShoppingBag,
-  Clock,
-  MapPin,
-} from 'lucide-react-native';
-import colors from '../constants/colors';
 import { useOrder } from '../context/OrderContext';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { useNotification } from '../context/NotificationContext';
+import { useAuth } from '../auth/AuthContext';
+import { colors } from '../constants/theme';
+import { ShoppingBag, Clock, Package, MapPin, X } from 'lucide-react-native';
 
+// Cancel Order Modal Component
 const CancelOrderModal = ({ isVisible, onClose, onConfirm, isLoading }) => {
-
   return (
     <Modal
       visible={isVisible}
-      transparent
-      animationType="fade"
+      transparent={true}
+      animationType="slide"
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Cancel Order</Text>
-          <Text style={styles.modalText}>
-            Are you sure you want to cancel this order? This action cannot be
-            undone.
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Cancel Order</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <X size={24} color={colors.text.primary} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.modalMessage}>
+            Are you sure you want to cancel this order? This action cannot be undone.
           </Text>
           <View style={styles.modalButtons}>
             <TouchableOpacity
-              style={[styles.modalButton, styles.cancelButton]}
+              style={[styles.modalButton, styles.cancelModalButton]}
               onPress={onClose}
               disabled={isLoading}
             >
-              <Text style={styles.cancelButtonText}>No, Keep Order</Text>
+              <Text style={styles.cancelModalButtonText}>Keep Order</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modalButton, styles.confirmButton]}
               onPress={onConfirm}
               disabled={isLoading}
             >
-              {isLoading ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <Text style={styles.confirmButtonText}>Yes, Cancel Order</Text>
-              )}
+              <Text style={styles.confirmButtonText}>
+                {isLoading ? 'Cancelling...' : 'Cancel Order'}
+              </Text>
             </TouchableOpacity>
-          
           </View>
         </View>
       </View>
@@ -71,27 +65,34 @@ const CancelOrderModal = ({ isVisible, onClose, onConfirm, isLoading }) => {
 };
 
 export default function OrdersScreen() {
-  const { sendLocalNotification } = useNotification();
   const router = useRouter();
-  const { orders, cancelOrder, loading, error, fetchOrders } = useOrder();
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [isCancelModalVisible, setIsCancelModalVisible] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
+  const { orders, loading, error, fetchOrders, cancelOrder } = useOrder();
+  const { sendLocalNotification } = useNotification();
+  const { isLoggedIn } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const [isCancelModalVisible, setIsCancelModalVisible] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
-  // Format date to a more readable format
+  // Format date for display
   const formatDate = (dateString) => {
     if (!dateString) return '';
-
-    const options = { year: 'numeric', month: 'short', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch (error) {
+      return '';
+    }
   };
 
   // Format status for display
   const formatStatus = (status) => {
     if (!status) return 'Processing';
 
-    // Convert from backend status format to display format
     switch (status.toLowerCase()) {
       case 'pending':
         return 'Pending';
@@ -108,34 +109,41 @@ export default function OrdersScreen() {
     }
   };
 
-  // Get status color based on status
+  // Get status color
   const getStatusColor = (status) => {
-    if (!status) return '#FFA726';
+    if (!status) return colors.warning;
 
     switch (status.toLowerCase()) {
       case 'pending':
-        return '#FFA726';
+        return colors.warning;
       case 'processing':
-        return '#2196F3';
+        return colors.primary;
       case 'out_for_delivery':
-        return '#9C27B0';
+        return colors.info;
       case 'delivered':
-        return '#4CAF50';
+        return colors.success;
       case 'cancelled':
-        return '#FF4D4F';
+        return colors.error;
       default:
-        return '#FFA726';
+        return colors.text.secondary;
     }
   };
 
-  // Handle pull-to-refresh
+  // Handle refresh
   const onRefresh = async () => {
+    if (!isLoggedIn) {
+      setRefreshing(false);
+      return;
+    }
+    
     setRefreshing(true);
-    await fetchOrders();
+    if (fetchOrders) {
+      await fetchOrders();
+    }
     setRefreshing(false);
   };
 
-  // Handle order cancellation
+  // Handle cancel order
   const handleCancelOrder = (order) => {
     setSelectedOrder(order);
     setIsCancelModalVisible(true);
@@ -162,7 +170,6 @@ export default function OrdersScreen() {
         'Error',
         'An unexpected error occurred. Please try again later.'
       );
-      console.error('Error cancelling order:', error);
     } finally {
       setIsCancelling(false);
       setIsCancelModalVisible(false);
@@ -179,31 +186,18 @@ export default function OrdersScreen() {
   };
 
   // Render each order item
-  const renderOrderItem = ({ item }) => (
+  const renderOrderItem = ({ item }) => {
+    if (!item) return null;
+    
+    return (
     <TouchableOpacity
       style={styles.orderCard}
-      onPress={() => router.push(`/orders/${item.id}`)}
+      onPress={() => router.push(`/orders/${item.id || ''}`)}
       activeOpacity={0.7}
     >
-
-<TouchableOpacity 
-  style={styles.testButton}
-  onPress={() => {
-    console.log('Test notification button pressed');
-    sendLocalNotification(
-      'Test Notification',
-      'This is a test notification',
-      { test: true }
-    );
-  }}
->
-  <Text style={styles.testButtonText}>Test Notification</Text>
-</TouchableOpacity>
-
-
       <View style={styles.orderHeader}>
         <View style={styles.orderInfo}>
-          <Text style={styles.orderNumber}>#{item.orderNumber}</Text>
+          <Text style={styles.orderNumber}>#{item.orderNumber || 'N/A'}</Text>
           <Text style={styles.orderDate}>{formatDate(item.date)}</Text>
         </View>
         <View
@@ -216,65 +210,106 @@ export default function OrdersScreen() {
         </View>
       </View>
 
-      <View style={styles.storeInfo}>
-        <Package size={16} color={colors.primary} />
-        <Text style={styles.storeName}>{item.store}</Text>
+      <View style={styles.vendorSection}>
+        <View style={styles.storeInfo}>
+          <Package size={16} color={colors.primary} />
+          <View style={styles.storeDetails}>
+            <Text style={styles.storeName}>{item.store || 'Unknown Store'}</Text>
+            {item.storeLocation && (
+              <Text style={styles.storeLocation} numberOfLines={1}>
+                📍 {item.storeLocation}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {item.deliveryAddress && (
+          <View style={styles.addressInfo}>
+            <MapPin size={14} color={colors.text.secondary} />
+            <Text style={styles.addressText} numberOfLines={1}>
+              Delivery to: {item.deliveryAddress}
+            </Text>
+          </View>
+        )}
       </View>
 
-      {item.deliveryAddress && (
-        <View style={styles.addressInfo}>
-          <MapPin size={14} color={colors.text.secondary} />
-          <Text style={styles.addressText} numberOfLines={1}>
-            {item.deliveryAddress}
-          </Text>
-        </View>
-      )}
-
       <View style={styles.itemsContainer}>
-        {item.items.slice(0, 3).map((product, index) => (
-          // <View key={index} style={styles.itemRow}>
-          //   <Text style={styles.itemName} numberOfLines={1}>
-          //     {product.quantity}x {product.name}
-          //   </Text>
-          //   <Text style={styles.itemPrice}>
-          //     Rs {(product.price * product.quantity).toFixed(2)}
-          //   </Text>
-          // </View>
-          // Update the item rendering in orders.jsx
-<View key={index} style={styles.itemRow}>
-  <Text style={styles.itemName} numberOfLines={1}>
-    {product.quantity}x {product.name}
-  </Text>
-  
-  {product.discountType && product.discountValue ? (
-    <View>
-      <Text style={styles.itemOriginalPrice}>
-        Rs {(product.originalPrice * product.quantity).toFixed(2)}
-      </Text>
-      <Text style={styles.itemPrice}>
-        Rs {(product.price * product.quantity).toFixed(2)}
-      </Text>
-    </View>
-  ) : (
-    <Text style={styles.itemPrice}>
-      Rs {(product.price * product.quantity).toFixed(2)}
-    </Text>
-  )}
-</View>
-        ))}
+        {item.items && item.items.length > 0 && item.items.slice(0, 3).map((product, index) => {
+          if (!product) return null;
+          return (
+            <View key={index} style={styles.itemRow}>
+              <View style={styles.itemLeftSection}>
+                <Text style={styles.itemName} numberOfLines={1}>
+                  {(product.quantity || 0)}x {product.name || 'Unknown Item'}
+                </Text>
+                {product.discountType && product.discountValue > 0 && (
+                  <View style={styles.discountInfo}>
+                    <Text style={styles.discountBadge}>
+                      {product.discountType === 'percentage' 
+                        ? `${product.discountValue || 0}% OFF` 
+                        : `Rs ${product.discountValue || 0} OFF`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              
+              <View style={styles.itemPriceSection}>
+                {product.discountType && product.discountValue > 0 ? (
+                  <View style={styles.priceWithDiscount}>
+                    <Text style={styles.itemOriginalPrice}>
+                      Rs {((product.originalPrice || 0) * (product.quantity || 1)).toFixed(2)}
+                    </Text>
+                    <Text style={styles.itemPrice}>
+                      Rs {((product.price || 0) * (product.quantity || 1)).toFixed(2)}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.itemPrice}>
+                    Rs {((product.price || 0) * (product.quantity || 1)).toFixed(2)}
+                  </Text>
+                )}
+              </View>
+            </View>
+          );
+        })}
 
-        {item.items.length > 3 && (
+        {item.items && item.items.length > 3 && (
           <Text style={styles.moreItemsText}>
             +{item.items.length - 3} more items
           </Text>
         )}
       </View>
 
+      <View style={styles.priceBreakdown}>
+        <View style={styles.priceRow}>
+          <Text style={styles.priceLabel}>Subtotal:</Text>
+          <Text style={styles.priceValue}>Rs {(item.subtotal || 0).toFixed(2)}</Text>
+        </View>
+        
+        {item.deliveryFee && item.deliveryFee > 0 && (
+          <View style={styles.priceRow}>
+            <Text style={styles.priceLabel}>Delivery Fee:</Text>
+            <Text style={styles.priceValue}>Rs {(item.deliveryFee || 0).toFixed(2)}</Text>
+          </View>
+        )}
+        
+        {item.orderDiscount && item.orderDiscount > 0 && (
+          <View style={styles.priceRow}>
+            <Text style={styles.priceLabel}>Order Discount:</Text>
+            <Text style={styles.discountValue}>- Rs {(item.orderDiscount || 0).toFixed(2)}</Text>
+          </View>
+        )}
+        
+        <View style={styles.divider} />
+        
+        <View style={styles.priceRow}>
+          <Text style={styles.totalLabel}>Total:</Text>
+          <Text style={styles.totalValue}>Rs {(item.total || 0).toFixed(2)}</Text>
+        </View>
+      </View>
+
       <View style={styles.orderFooter}>
         <View style={styles.footerLeft}>
-          <Text style={styles.totalText}>
-            Total: Rs {item.total.toFixed(2)}
-          </Text>
           <View style={styles.timeInfo}>
             <Clock size={12} color={colors.text.secondary} />
             <Text style={styles.timeText}>
@@ -296,13 +331,30 @@ export default function OrdersScreen() {
         )}
       </View>
     </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Orders</Text>
       </View>
+
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Error: {error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              if (isLoggedIn && fetchOrders) {
+                fetchOrders();
+              }
+            }}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
@@ -360,6 +412,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.main,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -369,6 +424,57 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: colors.text.primary,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  testOrderButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#FF6B6B',
+    borderRadius: 6,
+  },
+  testOrderButtonText: {
+    color: colors.background.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  refreshButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.primary,
+    borderRadius: 6,
+  },
+  refreshButtonText: {
+    color: colors.background.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  errorContainer: {
+    backgroundColor: '#FFF5F5',
+    padding: 16,
+    margin: 16,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF6B6B',
+  },
+  errorText: {
+    color: '#E53E3E',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  retryButton: {
+    backgroundColor: '#FF6B6B',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
@@ -430,29 +536,27 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
-  // Add these styles to your StyleSheet in orders.jsx
-itemOriginalPrice: {
-  fontSize: 12,
-  color: colors.text.secondary,
-  textDecorationLine: 'line-through',
-  textAlign: 'right',
-},
-itemPrice: {
-  fontSize: 14,
-  color: colors.primary,
-  fontWeight: '500',
-  textAlign: 'right',
-},
   storeName: {
     fontSize: 14,
     color: colors.text.primary,
     fontWeight: '500',
   },
+  vendorSection: {
+    marginBottom: 12,
+  },
+  storeDetails: {
+    flex: 1,
+  },
+  storeLocation: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
   addressInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 12,
+    marginTop: 4,
   },
   addressText: {
     fontSize: 13,
@@ -469,13 +573,42 @@ itemPrice: {
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  itemLeftSection: {
+    flex: 1,
+    marginRight: 12,
   },
   itemName: {
     fontSize: 14,
     color: colors.text.secondary,
-    flex: 1,
-    marginRight: 8,
+    marginBottom: 4,
+  },
+  discountInfo: {
+    marginTop: 2,
+  },
+  discountBadge: {
+    fontSize: 11,
+    color: colors.primary,
+    backgroundColor: colors.background.main,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontWeight: '600',
+    alignSelf: 'flex-start',
+  },
+  itemPriceSection: {
+    alignItems: 'flex-end',
+  },
+  priceWithDiscount: {
+    alignItems: 'flex-end',
+  },
+  itemOriginalPrice: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    textDecorationLine: 'line-through',
+    textAlign: 'right',
   },
   itemPrice: {
     fontSize: 14,
@@ -487,6 +620,58 @@ itemPrice: {
     color: colors.primary,
     textAlign: 'center',
     marginTop: 5,
+  },
+  priceBreakdown: {
+    backgroundColor: colors.background.main,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  priceLabel: {
+    fontSize: 14,
+    color: colors.text.secondary,
+  },
+  priceValue: {
+    fontSize: 14,
+    color: colors.text.primary,
+    fontWeight: '500',
+  },
+  discountValue: {
+    fontSize: 14,
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 8,
+  },
+  totalLabel: {
+    fontSize: 16,
+    color: colors.text.primary,
+    fontWeight: '600',
+  },
+  totalValue: {
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  debugInfo: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#FFF3CD',
+    borderRadius: 4,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#856404',
+    fontFamily: 'monospace',
   },
   orderFooter: {
     flexDirection: 'row',
@@ -562,16 +747,25 @@ itemPrice: {
       },
     }),
   },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   modalTitle: {
     fontSize: 20,
     fontWeight: '600',
     color: colors.text.primary,
-    marginBottom: 12,
   },
-  modalText: {
+  modalMessage: {
     fontSize: 16,
     color: colors.text.secondary,
     marginBottom: 20,
+    textAlign: 'center',
+  },
+  closeButton: {
+    padding: 5,
   },
   modalButtons: {
     flexDirection: 'row',
@@ -590,6 +784,14 @@ itemPrice: {
   },
   confirmButtonText: {
     color: colors.background.white,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  cancelModalButton: {
+    backgroundColor: '#E0E0E0',
+  },
+  cancelModalButtonText: {
+    color: colors.text.primary,
     fontSize: 14,
     fontWeight: '500',
   },

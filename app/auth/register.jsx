@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useAuth } from './AuthContext';
-import theme from '../theme';
+import theme from '../constants/theme';
 import {
   Mail,
   Lock,

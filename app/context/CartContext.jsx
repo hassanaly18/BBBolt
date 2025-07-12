@@ -78,6 +78,8 @@ const formattedItems = response.data.items.map((item) => {
     },
     category: vendorProduct.product.category?.name || '',
     subCategory: vendorProduct.product.subCategory?.name || '',
+    // Preserve the full vendorProduct structure for recipe functionality
+    vendorProduct: vendorProduct,
   };
 });
       setCartItems(formattedItems);

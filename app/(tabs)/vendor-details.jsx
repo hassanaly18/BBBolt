@@ -34,7 +34,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { vendorApi, categoryApi, vendorProductApi } from '../services/api';
 import { useLocation } from '../context/LocationContext';
 import { useCart } from '../context/CartContext';
-import theme from '../theme';
+import theme from '../constants/theme';
 import { Modal } from 'react-native';
 
 const { width } = Dimensions.get('window');

@@ -8,7 +8,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  FlatList
+  FlatList,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { 
@@ -19,11 +21,19 @@ import {
   ChevronDown,
   ArrowUpDown,
   MapPin,
-  Trash
+  Trash,
+  Package,
+  Star,
+  Tag,
+  Store,
 } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useCart } from '../context/CartContext';
 import { customerApi } from '../services/api';
-import colors from '../constants/colors';
+import { colors } from '../constants/theme';
+import theme from '../constants/theme';
+
+const { width } = Dimensions.get('window');
 
 export default function RationPackDetails() {
   const router = useRouter();
@@ -38,7 +48,7 @@ export default function RationPackDetails() {
   const [sortBy, setSortBy] = useState(initialSortBy || 'nearest');
   // Keep track of the original selected items
   const [selectedItemsArray, setSelectedItemsArray] = useState(JSON.parse(selectedItems));
-  const productIdsArray = JSON.parse(productIds);
+  const [productIdsArray, setProductIdsArray] = useState(JSON.parse(productIds));
 
   // Predefined radius options
   const radiusOptions = [
@@ -59,6 +69,16 @@ export default function RationPackDetails() {
     cheapest: 'Price: Low to High',
     expensive: 'Price: High to Low',
   };
+
+  // Update state when URL parameters change (when user goes back and selects new items)
+  useEffect(() => {
+    const newSelectedItems = JSON.parse(selectedItems);
+    const newProductIds = JSON.parse(productIds);
+    
+    setSelectedItemsArray(newSelectedItems);
+    setProductIdsArray(newProductIds);
+    setSelectedVendor(null); // Clear vendor selection since items changed
+  }, [selectedItems, productIds]);
 
   useEffect(() => {
     fetchRationPacks();
@@ -88,54 +108,37 @@ export default function RationPackDetails() {
         packs.sort((a, b) => b.totalDiscountedPrice - a.totalDiscountedPrice);
       }
       
-      // Check if vendors have all selected products
-      // If not, mark unavailable items
+      // Use the backend's availability data directly - it's already correct
+      // The backend provides isAvailable flags and proper item matching
       packs = packs.map(pack => {
-        // Check which items are available in this vendor
-        const packWithAvailability = {...pack};
-        const vendorItemTitles = pack.items.map(item => item.title.toLowerCase());
+        // Ensure all requested items are present in the response
+        const packWithCompleteItems = {...pack};
+        const vendorItemTitles = pack.items.map(item => item.title);
         
-        // Go through all requested items and check which ones are missing
-        const allRequested = [...selectedItemsArray];
-        packWithAvailability.items = allRequested.map(requestedItem => {
-          // Find matching item in vendor's inventory (case insensitive)
-          const matchIndex = vendorItemTitles.findIndex(
-            title => title.toLowerCase() === requestedItem.toLowerCase()
-          );
+        // Add any missing requested items as unavailable
+        const missingItems = selectedItemsArray.filter(requestedItem => 
+          !vendorItemTitles.some(vendorItem => 
+            vendorItem.toLowerCase() === requestedItem.toLowerCase()
+          )
+        );
+        
+        if (missingItems.length > 0) {
+          const missingItemsData = missingItems.map(item => ({
+            title: item,
+            isAvailable: false,
+            originalPrice: 0,
+            discountedPrice: 0,
+            imageUrl: 'https://via.placeholder.com/60?text=N/A',
+            productId: null,
+            vendorProductId: null,
+            discountType: null,
+            discountValue: null
+          }));
           
-          if (matchIndex >= 0) {
-            // Item found in this vendor - mark as available and use the data
-            return {
-              ...pack.items[matchIndex],
-              isAvailable: true
-            };
-          } else {
-            // Item not found in this vendor - mark as unavailable
-            return {
-              title: requestedItem,
-              isAvailable: false,
-              originalPrice: 0,
-              discountedPrice: 0,
-              // Use placeholder image
-              imageUrl: 'https://via.placeholder.com/60?text=N/A'
-            };
-          }
-        });
+          packWithCompleteItems.items = [...pack.items, ...missingItemsData];
+        }
         
-        // Recalculate totals based on available items only
-        const availableItems = packWithAvailability.items.filter(item => item.isAvailable);
-        packWithAvailability.totalOriginalPrice = availableItems.reduce(
-          (sum, item) => sum + item.originalPrice, 0
-        );
-        packWithAvailability.totalDiscountedPrice = availableItems.reduce(
-          (sum, item) => sum + item.discountedPrice, 0
-        );
-        packWithAvailability.savings = packWithAvailability.totalOriginalPrice - packWithAvailability.totalDiscountedPrice;
-        packWithAvailability.savingsPercentage = packWithAvailability.totalOriginalPrice > 0 
-          ? (packWithAvailability.savings / packWithAvailability.totalOriginalPrice * 100).toFixed(2)
-          : 0;
-        
-        return packWithAvailability;
+        return packWithCompleteItems;
       });
       
       setVendorRationPacks(packs);
@@ -148,6 +151,64 @@ export default function RationPackDetails() {
       }
     } catch (error) {
       console.error('Error fetching ration packs:', error);
+      Alert.alert('Error', 'Failed to fetch ration pack details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectVendor = (vendorPack) => {
+    setSelectedVendor(vendorPack);
+  };
+
+  const handleAddToCart = async () => {
+    if (!selectedVendor) return;
+    
+    setLoading(true);
+    try {
+      // Only include items that are explicitly marked as available and have valid IDs
+      const availableItems = selectedVendor.items.filter(item => 
+        item.isAvailable === true && 
+        item.vendorProductId && 
+        item.productId
+      );
+
+      if (availableItems.length === 0) {
+        Alert.alert('No Available Items', 'There are no available items to add to cart from this vendor.');
+        setLoading(false);
+        return;
+      }
+
+      for (const item of availableItems) {
+        const vendorProductData = {
+          _id: item.vendorProductId,
+          discountType: item.discountType,
+          discountValue: item.discountValue,
+          product: {
+            _id: item.productId,
+            title: item.title,
+            imageUrl: item.imageUrl,
+            price: item.originalPrice
+          },
+          vendor: selectedVendor.vendor
+        };
+
+        // Add to cart with discount information preserved
+        await addToCart(vendorProductData);
+      }
+      
+      // Success message
+      Alert.alert(
+        'Added to Cart',
+        `${availableItems.length} items from ${selectedVendor.vendor.name} added to your cart successfully!`,
+        [
+          { text: 'Continue Shopping', onPress: () => router.back() },
+          { text: 'View Cart', onPress: () => router.push('/(tabs)/cart') }
+        ]
+      );
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      Alert.alert('Error', 'Failed to add items to cart. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -172,6 +233,9 @@ export default function RationPackDetails() {
             );
             setSelectedItemsArray(updatedItems);
             
+            // Clear selected vendor since items changed
+            setSelectedVendor(null);
+            
             // If no items left, go back
             if (updatedItems.length === 0) {
               Alert.alert(
@@ -188,181 +252,134 @@ export default function RationPackDetails() {
     );
   };
 
-  const handleSelectVendor = (vendor) => {
-    setSelectedVendor(vendor);
-  };
-  
-  const handleAddToCart = async () => {
-    if (!selectedVendor) return;
-    
-    setLoading(true);
-    try {
-      // Only include items that are explicitly marked as available and have valid IDs
-      const availableItems = selectedVendor.items.filter(item => 
-        item.isAvailable === true && 
-        item.vendorProductId && 
-        item.productId
-      );
-      
-      if (availableItems.length === 0) {
-        Alert.alert('No Available Items', 'There are no available items to add to cart from this vendor.');
-        setLoading(false);
-        return;
-      }
-      
-      for (const item of availableItems) {
-        const vendorProductData = {
-          _id: item.vendorProductId,
-          discountType: item.discountType,
-          discountValue: item.discountValue,
-          product: {
-            _id: item.productId,
-            title: item.title,
-            price: item.originalPrice,
-            imageUrl: item.imageUrl
-          },
-          vendor: selectedVendor.vendor
-        };
-        
-        // Add to cart with discount information preserved
-        await addToCart(vendorProductData);
-      }
-      
-      // Success message
-      Alert.alert(
-        'Added to Cart',
-        `${availableItems.length} items from ${selectedVendor.vendor.name} added to your cart successfully!`,
-        [
-          { text: 'Continue Shopping', onPress: () => router.back() },
-          { text: 'View Cart', onPress: () => router.push('/cart') }
-        ]
-      );
-    } catch (error) {
-      console.error('Error adding to cart:', error);
-      Alert.alert('Error', 'Failed to add items to cart. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Function to apply filters and sort
-  const applyFilters = () => {
-    fetchRationPacks();
-  };
-  
-  // Renders filters header
   const renderFiltersHeader = () => (
     <View style={styles.filtersHeader}>
-      <View style={styles.filterOption}>
-        <Text style={styles.filterLabel}>Radius:</Text>
-        <TouchableOpacity 
-          style={styles.dropdownButton}
-          onPress={() => {
-            setShowRadiusOptions(!showRadiusOptions);
-            setShowSortOptions(false);
-          }}
-        >
-          <Text style={styles.dropdownButtonText}>
-            {radiusOptions.find(opt => opt.value === radius)?.label || '5 km'}
-          </Text>
-          <ChevronDown size={16} color={colors.text.secondary} />
-        </TouchableOpacity>
-        
-        {showRadiusOptions && (
-          <View style={styles.dropdownOptions}>
-            {radiusOptions.map(option => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.dropdownOption,
-                  radius === option.value && styles.dropdownOptionSelected
-                ]}
-                onPress={() => {
-                  setRadius(option.value);
-                  setShowRadiusOptions(false);
-                }}
-              >
-                <Text 
+      <LinearGradient
+        colors={theme.colors.gradients.card}
+        style={styles.filtersHeaderGradient}
+      >
+        <View style={styles.filterOption}>
+          <Text style={styles.filterLabel}>Search Radius</Text>
+          <TouchableOpacity 
+            style={styles.dropdownButton}
+            onPress={() => {
+              setShowRadiusOptions(!showRadiusOptions);
+              setShowSortOptions(false);
+            }}
+          >
+            <Text style={styles.dropdownButtonText}>
+              {radiusOptions.find(opt => opt.value === radius)?.label || '5 km'}
+            </Text>
+            <ChevronDown size={16} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
+          
+          {showRadiusOptions && (
+            <View style={styles.dropdownOptions}>
+              {radiusOptions.map(option => (
+                <TouchableOpacity
+                  key={option.value}
                   style={[
-                    styles.dropdownOptionText,
-                    radius === option.value && styles.dropdownOptionTextSelected
+                    styles.dropdownOption,
+                    radius === option.value && styles.dropdownOptionSelected
                   ]}
+                  onPress={() => {
+                    setRadius(option.value);
+                    setShowRadiusOptions(false);
+                  }}
                 >
-                  {option.label}
-                </Text>
-                {radius === option.value && (
-                  <Check size={16} color={colors.primary} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </View>
-      
-      <View style={styles.filterOption}>
-        <Text style={styles.filterLabel}>Sort by:</Text>
-        <TouchableOpacity 
-          style={styles.dropdownButton}
-          onPress={() => {
-            setShowSortOptions(!showSortOptions);
-            setShowRadiusOptions(false);
-          }}
-        >
-          <Text style={styles.dropdownButtonText}>
-            {sortOptions[sortBy] || 'Nearest First'}
-          </Text>
-          <ArrowUpDown size={16} color={colors.text.secondary} />
-        </TouchableOpacity>
+                  <Text 
+                    style={[
+                      styles.dropdownOptionText,
+                      radius === option.value && styles.dropdownOptionTextSelected
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                  {radius === option.value && (
+                    <Check size={16} color={theme.colors.primary.main} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
         
-        {showSortOptions && (
-          <View style={styles.dropdownOptions}>
-            {Object.entries(sortOptions).map(([key, label]) => (
-              <TouchableOpacity
-                key={key}
-                style={[
-                  styles.dropdownOption,
-                  sortBy === key && styles.dropdownOptionSelected
-                ]}
-                onPress={() => {
-                  setSortBy(key);
-                  setShowSortOptions(false);
-                }}
-              >
-                <Text 
+        <View style={styles.filterOption}>
+          <Text style={styles.filterLabel}>Sort By</Text>
+          <TouchableOpacity 
+            style={styles.dropdownButton}
+            onPress={() => {
+              setShowSortOptions(!showSortOptions);
+              setShowRadiusOptions(false);
+            }}
+          >
+            <Text style={styles.dropdownButtonText}>
+              {sortOptions[sortBy] || 'Nearest First'}
+            </Text>
+            <ArrowUpDown size={16} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
+          
+          {showSortOptions && (
+            <View style={styles.dropdownOptions}>
+              {Object.entries(sortOptions).map(([key, label]) => (
+                <TouchableOpacity
+                  key={key}
                   style={[
-                    styles.dropdownOptionText,
-                    sortBy === key && styles.dropdownOptionTextSelected
+                    styles.dropdownOption,
+                    sortBy === key && styles.dropdownOptionSelected
                   ]}
+                  onPress={() => {
+                    setSortBy(key);
+                    setShowSortOptions(false);
+                  }}
                 >
-                  {label}
-                </Text>
-                {sortBy === key && (
-                  <Check size={16} color={colors.primary} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </View>
+                  <Text 
+                    style={[
+                      styles.dropdownOptionText,
+                      sortBy === key && styles.dropdownOptionTextSelected
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                  {sortBy === key && (
+                    <Check size={16} color={theme.colors.primary.main} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      </LinearGradient>
     </View>
   );
   
   // Render the ration pack items section
   const renderRationPackItems = () => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Your Ration Pack</Text>
-      <FlatList 
-        data={selectedItemsArray}
-        renderItem={({ item }) => (
-          <View style={styles.selectedItemCard}>
-            <View style={styles.selectedItemInfo}>
-              <Text style={styles.selectedItemTitle}>{item}</Text>
-            </View>
+      <LinearGradient
+        colors={theme.colors.gradients.card}
+        style={styles.sectionGradient}
+      >
+        <View style={styles.sectionHeader}>
+          <Package size={20} color={theme.colors.primary.main} />
+          <Text style={styles.sectionTitle}>Your Ration Pack</Text>
+          <View style={styles.itemsCountBadge}>
+            <Text style={styles.itemsCountText}>{selectedItemsArray.length}</Text>
           </View>
-        )}
-        keyExtractor={(item, index) => `selected-item-${index}`}
-        scrollEnabled={false}
-      />
+        </View>
+        <FlatList 
+          data={selectedItemsArray}
+          renderItem={({ item }) => (
+            <View style={styles.selectedItemCard}>
+              <View style={styles.selectedItemInfo}>
+                <Text style={styles.selectedItemTitle}>{item}</Text>
+              </View>
+            </View>
+          )}
+          keyExtractor={(item, index) => `selected-item-${index}`}
+          scrollEnabled={false}
+        />
+      </LinearGradient>
     </View>
   );
   
@@ -376,187 +393,286 @@ export default function RationPackDetails() {
     
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Pack Details from {selectedVendor.vendor.name}</Text>
-        
-        {/* Available Items */}
-        <View style={styles.itemsSection}>
-          <Text style={styles.itemSectionTitle}>Available Items</Text>
-          {availableItems.length > 0 ? (
-            availableItems.map((item, index) => (
-              <View key={`available-${index}`} style={styles.detailRow}>
-                <View style={styles.itemRowLeft}>
-                  <Image 
-                    source={{ uri: item.imageUrl || 'https://via.placeholder.com/40' }} 
-                    style={styles.itemImage}
-                  />
-                  <Text style={styles.detailName}>{item.title}</Text>
-                </View>
-                <View style={styles.priceContainer}>
-                  {item.discountedPrice < item.originalPrice ? (
-                    <>
-                      <Text style={styles.detailOrigPrice}>Rs {item.originalPrice}</Text>
-                      <Text style={styles.detailDiscPrice}>Rs {item.discountedPrice}</Text>
-                    </>
-                  ) : (
-                    <Text style={styles.detailPrice}>Rs {item.originalPrice}</Text>
-                  )}
-                </View>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.noItemsText}>No available items found</Text>
-          )}
-        </View>
-        
-        {/* Unavailable Items - only show if there are any */}
-        {unavailableItems.length > 0 && (
+        <LinearGradient
+          colors={theme.colors.gradients.card}
+          style={styles.sectionGradient}
+        >
+          <View style={styles.sectionHeader}>
+            <Store size={20} color={theme.colors.primary.main} />
+            <Text style={styles.sectionTitle}>Pack Details from {selectedVendor.vendor.name}</Text>
+          </View>
+          
+          {/* Available Items */}
           <View style={styles.itemsSection}>
-            <Text style={styles.itemSectionTitle}>Unavailable Items</Text>
-            {unavailableItems.map((item, index) => (
-              <View key={`unavailable-${index}`} style={styles.unavailableRow}>
-                <View style={styles.itemRowLeft}>
-                  <AlertTriangle size={20} color={colors.error} />
-                  <Text style={styles.unavailableText}>{item.title}</Text>
-                </View>
-                <TouchableOpacity 
-                  style={styles.removeItemButton}
-                  onPress={() => removeUnavailableItem(item.title)}
-                >
-                  <Trash size={18} color={colors.error} />
-                </TouchableOpacity>
+            <View style={styles.itemSectionHeader}>
+              <Check size={16} color={theme.colors.success} />
+              <Text style={styles.itemSectionTitle}>Available Items</Text>
+              <View style={styles.availableCountBadge}>
+                <Text style={styles.availableCountText}>{availableItems.length}</Text>
               </View>
-            ))}
-            <Text style={styles.unavailableNote}>
-              These items are not available from this vendor
+            </View>
+            {availableItems.length > 0 ? (
+              availableItems.map((item, index) => (
+                <View key={`available-${index}`} style={styles.detailRow}>
+                  <View style={styles.itemRowLeft}>
+                    <Image 
+                      source={{ uri: item.imageUrl || 'https://via.placeholder.com/40' }} 
+                      style={styles.itemImage}
+                    />
+                    <Text style={styles.detailName}>{item.title}</Text>
+                  </View>
+                  <View style={styles.priceContainer}>
+                    {item.discountedPrice < item.originalPrice ? (
+                      <>
+                        <Text style={styles.detailOrigPrice}>Rs {item.originalPrice}</Text>
+                        <Text style={styles.detailDiscPrice}>Rs {item.discountedPrice}</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.detailPrice}>Rs {item.originalPrice}</Text>
+                    )}
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.noItemsText}>No available items found</Text>
+            )}
+          </View>
+          
+          {/* Unavailable Items - only show if there are any */}
+          {unavailableItems.length > 0 && (
+            <View style={styles.itemsSection}>
+              <View style={styles.itemSectionHeader}>
+                <AlertTriangle size={16} color={theme.colors.warning} />
+                <Text style={styles.itemSectionTitle}>Unavailable Items</Text>
+                <View style={styles.unavailableCountBadge}>
+                  <Text style={styles.unavailableCountText}>{unavailableItems.length}</Text>
+                </View>
+              </View>
+              {unavailableItems.map((item, index) => (
+                <View key={`unavailable-${index}`} style={styles.unavailableRow}>
+                  <View style={styles.itemRowLeft}>
+                    <AlertTriangle size={20} color={theme.colors.error} />
+                    <Text style={styles.unavailableText}>{item.title}</Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.removeItemButton}
+                    onPress={() => removeUnavailableItem(item.title)}
+                  >
+                    <Trash size={18} color={theme.colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <Text style={styles.unavailableNote}>
+                These items are not available from this vendor
+              </Text>
+            </View>
+          )}
+          
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalPrice}>
+              Rs {selectedVendor.totalDiscountedPrice}
             </Text>
           </View>
-        )}
-        
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalPrice}>
-            Rs {selectedVendor.totalDiscountedPrice}
-          </Text>
-        </View>
-        
-        {unavailableItems.length > 0 && (
-          <View style={styles.warningBox}>
-            <AlertTriangle size={20} color={colors.warning} />
-            <Text style={styles.warningText}>
-              {unavailableItems.length} item(s) not available from this vendor. 
-              Only available items will be added to your cart.
-            </Text>
-          </View>
-        )}
+          
+          {unavailableItems.length > 0 && (
+            <View style={styles.warningBox}>
+              <AlertTriangle size={20} color={theme.colors.warning} />
+              <Text style={styles.warningText}>
+                {unavailableItems.length} item(s) not available from this vendor. 
+                Only available items will be added to your cart.
+              </Text>
+            </View>
+          )}
+        </LinearGradient>
       </View>
     );
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <LinearGradient
+        colors={theme.colors.gradients.primary}
+        style={styles.header}
+      >
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
+          activeOpacity={0.7}
         >
-          <ArrowLeft size={24} color={colors.text.primary} />
+          <ArrowLeft size={24} color={theme.colors.primary.contrastText} />
         </TouchableOpacity>
-        <Text style={styles.headerText}>Custom Ration Pack</Text>
-      </View>
+        <View style={styles.headerContent}>
+          <Package size={24} color={theme.colors.primary.contrastText} />
+          <Text style={styles.headerText}>Custom Ration Pack</Text>
+        </View>
+      </LinearGradient>
 
-      <ScrollView style={styles.content}>
+      {!loading && renderFiltersHeader()}
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ActivityIndicator size="large" color={theme.colors.primary.main} />
             <Text style={styles.loadingText}>
               Finding the best deals from nearby vendors...
             </Text>
           </View>
         ) : (
           <>
-            {renderFiltersHeader()}
             {renderRationPackItems()}
 
             {vendorRationPacks.length > 0 ? (
               <>
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Available Vendors</Text>
-                  <Text style={styles.vendorSubtitle}>
-                    Found {vendorRationPacks.length} vendors in {radius}km radius
-                  </Text>
-                  
-                  {vendorRationPacks.map((vendorPack, index) => {
-                    // Count available and unavailable items
-                    const availableItems = vendorPack.items.filter(item => item.isAvailable !== false);
-                    const unavailableItems = vendorPack.items.filter(item => item.isAvailable === false);
+                  <LinearGradient
+                    colors={theme.colors.gradients.card}
+                    style={styles.sectionGradient}
+                  >
+                    <View style={styles.sectionHeader}>
+                      <Store size={20} color={theme.colors.primary.main} />
+                      <Text style={styles.sectionTitle}>Available Vendors</Text>
+                      <View style={styles.vendorsCountBadge}>
+                        <Text style={styles.vendorsCountText}>{vendorRationPacks.length}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.vendorSubtitle}>
+                      Found {vendorRationPacks.length} vendors in {radius}km radius
+                    </Text>
                     
-                    return (
-                      <TouchableOpacity
-                        key={index}
-                        style={[
-                          styles.vendorCard,
-                          selectedVendor?.vendor._id === vendorPack.vendor._id && styles.selectedVendorCard,
-                        ]}
-                        onPress={() => handleSelectVendor(vendorPack)}
-                      >
-                        <Text style={styles.vendorName}>{vendorPack.vendor.name}</Text>
-                        
-                        <View style={styles.locationRow}>
-                          <MapPin size={14} color={colors.text.secondary} />
-                          <Text style={styles.locationText}>
-                            {vendorPack.vendor.location.formattedAddress || 'Location not available'}
-                          </Text>
-                        </View>
-                        
-                        <View style={styles.availabilityRow}>
-                          <Text style={styles.availabilityText}>
-                            {availableItems.length}/{vendorPack.items.length} items available
-                          </Text>
-                          {unavailableItems.length > 0 && (
-                            <View style={styles.warningTag}>
-                              <AlertTriangle size={14} color={colors.warning} />
-                              <Text style={styles.warningTagText}>
-                                {unavailableItems.length} unavailable
-                              </Text>
+                    {vendorRationPacks.map((vendorPack, index) => {
+                      // Count available and unavailable items
+                      const availableItems = vendorPack.items.filter(item => item.isAvailable !== false);
+                      const unavailableItems = vendorPack.items.filter(item => item.isAvailable === false);
+                      
+                      return (
+                        <TouchableOpacity
+                          key={index}
+                          style={[
+                            styles.vendorCard,
+                            selectedVendor?.vendor._id === vendorPack.vendor._id && styles.selectedVendorCard,
+                          ]}
+                          onPress={() => handleSelectVendor(vendorPack)}
+                          activeOpacity={0.8}
+                        >
+                          <LinearGradient
+                            colors={selectedVendor?.vendor._id === vendorPack.vendor._id 
+                              ? theme.colors.gradients.primary 
+                              : theme.colors.gradients.card
+                            }
+                            style={styles.vendorCardGradient}
+                          >
+                            <View style={styles.vendorHeader}>
+                              <View style={styles.vendorInfo}>
+                                <Text style={[
+                                  styles.vendorName,
+                                  selectedVendor?.vendor._id === vendorPack.vendor._id && styles.selectedVendorText
+                                ]}>{vendorPack.vendor.name}</Text>
+                                <View style={styles.locationRow}>
+                                  <MapPin size={14} color={theme.colors.text.secondary} />
+                                  <Text style={[
+                                    styles.locationText,
+                                    selectedVendor?.vendor._id === vendorPack.vendor._id && styles.selectedVendorText
+                                  ]}>
+                                    {vendorPack.vendor.location?.formattedAddress || 'Location not available'}
+                                  </Text>
+                                </View>
+                              </View>
+                              {selectedVendor?.vendor._id === vendorPack.vendor._id && (
+                                <View style={styles.selectedVendorBadge}>
+                                  <Check size={16} color={theme.colors.primary.contrastText} />
+                                </View>
+                              )}
                             </View>
-                          )}
-                        </View>
-                        
-                        <View style={styles.priceRow}>
-                          {vendorPack.totalOriginalPrice !== vendorPack.totalDiscountedPrice && (
-                            <Text style={styles.originalPrice}>Rs {vendorPack.totalOriginalPrice}</Text>
-                          )}
-                          <Text style={styles.discountedPrice}>Rs {vendorPack.totalDiscountedPrice}</Text>
-                        </View>
-                        
-                        {vendorPack.savings > 0 && (
-                          <Text style={styles.savingsText}>
-                            Save Rs {vendorPack.savings.toFixed(2)} ({vendorPack.savingsPercentage}%)
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
+                            
+                            <View style={styles.availabilityRow}>
+                              <Text style={[
+                                styles.availabilityText,
+                                selectedVendor?.vendor._id === vendorPack.vendor._id && styles.selectedVendorText
+                              ]}>
+                                {availableItems.length} of {vendorPack.items.length} items available
+                              </Text>
+                              {unavailableItems.length > 0 && (
+                                <View style={styles.warningTag}>
+                                  <AlertTriangle size={12} color={theme.colors.warning} />
+                                  <Text style={styles.warningTagText}>
+                                    {unavailableItems.length} unavailable
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                            
+                            <View style={styles.priceRow}>
+                              {vendorPack.totalOriginalPrice > vendorPack.totalDiscountedPrice ? (
+                                <>
+                                  <Text style={[
+                                    styles.originalPrice,
+                                    selectedVendor?.vendor._id === vendorPack.vendor._id && styles.selectedVendorText
+                                  ]}>
+                                    Rs {vendorPack.totalOriginalPrice}
+                                  </Text>
+                                  <Text style={[
+                                    styles.discountedPrice,
+                                    selectedVendor?.vendor._id === vendorPack.vendor._id && styles.selectedVendorText
+                                  ]}>
+                                    Rs {vendorPack.totalDiscountedPrice}
+                                  </Text>
+                                </>
+                              ) : (
+                                <Text style={[
+                                  styles.discountedPrice,
+                                  selectedVendor?.vendor._id === vendorPack.vendor._id && styles.selectedVendorText
+                                ]}>
+                                  Rs {vendorPack.totalDiscountedPrice}
+                                </Text>
+                              )}
+                            </View>
+                            
+                            {vendorPack.totalOriginalPrice > vendorPack.totalDiscountedPrice && (
+                              <Text style={[
+                                styles.savingsText,
+                                selectedVendor?.vendor._id === vendorPack.vendor._id && styles.selectedSavingsText
+                              ]}>
+                                Save Rs {(vendorPack.totalOriginalPrice - vendorPack.totalDiscountedPrice).toFixed(2)}
+                              </Text>
+                            )}
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </LinearGradient>
                 </View>
 
                 {selectedVendor && renderVendorDetails()}
               </>
             ) : (
               <View style={styles.noResultsContainer}>
-                <Text style={styles.noResultsText}>
-                  No vendors found with the requested items in {radius}km radius.
-                </Text>
-                <Text style={styles.noResultsSubtext}>
-                  Try increasing the search radius or modifying your ration pack.
-                </Text>
-                <TouchableOpacity
-                  style={styles.backToSelectionButton}
-                  onPress={() => router.back()}
+                <LinearGradient
+                  colors={theme.colors.gradients.card}
+                  style={styles.noResultsGradient}
                 >
-                  <Text style={styles.backToSelectionText}>
-                    Back to Selection
+                  <Package size={64} color={theme.colors.primary.main} />
+                  <Text style={styles.noResultsText}>
+                    No vendors found with the requested items in {radius}km radius.
                   </Text>
-                </TouchableOpacity>
+                  <Text style={styles.noResultsSubtext}>
+                    Try increasing the search radius or modifying your ration pack.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.backToSelectionButton}
+                    onPress={() => router.back()}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={theme.colors.gradients.primary}
+                      style={styles.backToSelectionGradient}
+                    >
+                      <Text style={styles.backToSelectionText}>
+                        Back to Selection
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </LinearGradient>
               </View>
             )}
           </>
@@ -564,16 +680,29 @@ export default function RationPackDetails() {
       </ScrollView>
 
       {!loading && selectedVendor && (
-  <TouchableOpacity
-    style={styles.addToCartButton}
-    onPress={handleAddToCart}
-    disabled={!selectedVendor.items.some(i => i.isAvailable === true && i.vendorProductId && i.productId)}
-  >
-    <ShoppingCart size={20} color="#FFFFFF" />
-    <Text style={styles.addToCartText}>
-      Add {selectedVendor.items.filter(i => i.isAvailable === true && i.vendorProductId && i.productId).length} Available Items to Cart
-    </Text>
-  </TouchableOpacity>
+        <View style={styles.addToCartContainer}>
+          <LinearGradient
+            colors={theme.colors.gradients.card}
+            style={styles.addToCartGradient}
+          >
+            <TouchableOpacity
+              style={styles.addToCartButton}
+              onPress={handleAddToCart}
+              disabled={!selectedVendor.items.some(i => i.isAvailable === true && i.vendorProductId && i.productId)}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={theme.colors.gradients.primary}
+                style={styles.addToCartButtonGradient}
+              >
+                <ShoppingCart size={20} color={theme.colors.primary.contrastText} />
+                <Text style={styles.addToCartText}>
+                  Add {selectedVendor.items.filter(i => i.isAvailable === true && i.vendorProductId && i.productId).length} Available Items to Cart
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
       )}
     </View>
   );
@@ -582,79 +711,141 @@ export default function RationPackDetails() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.main,
+    backgroundColor: theme.colors.background.main,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: colors.background.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    padding: theme.spacing.lg,
+    paddingTop: theme.spacing.xl,
   },
   backButton: {
-    marginRight: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.background.white + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.md,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   headerText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text.primary,
+    ...theme.typography.h3,
+    color: theme.colors.primary.contrastText,
+    marginLeft: theme.spacing.sm,
   },
   content: {
     flex: 1,
   },
   loadingContainer: {
-    padding: 24,
+    padding: theme.spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: colors.text.secondary,
+    ...theme.typography.body1,
+    color: theme.colors.text.secondary,
     textAlign: 'center',
+    marginTop: theme.spacing.md,
   },
   section: {
-    backgroundColor: colors.background.white,
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    margin: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    overflow: 'hidden',
+    ...theme.shadows.md,
+  },
+  sectionGradient: {
+    padding: theme.spacing.md,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-    marginBottom: 16,
+    ...theme.typography.h4,
+    color: theme.colors.text.primary,
+    marginLeft: theme.spacing.sm,
+    flex: 1,
+  },
+  itemsCountBadge: {
+    backgroundColor: theme.colors.secondary.main,
+    borderRadius: 12,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  itemsCountText: {
+    ...theme.typography.caption,
+    color: theme.colors.secondary.contrastText,
+    fontWeight: '600',
+  },
+  vendorsCountBadge: {
+    backgroundColor: theme.colors.primary.main,
+    borderRadius: 12,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  vendorsCountText: {
+    ...theme.typography.caption,
+    color: theme.colors.primary.contrastText,
+    fontWeight: '600',
   },
   vendorSubtitle: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginBottom: 12,
+    ...theme.typography.body2,
+    color: theme.colors.text.secondary,
+    marginBottom: theme.spacing.md,
   },
   itemsSection: {
-    marginBottom: 16,
+    marginBottom: theme.spacing.md,
     borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.background.white,
+  },
+  itemSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
   },
   itemSectionTitle: {
-    fontSize: 16,
+    ...theme.typography.h5,
+    color: theme.colors.text.primary,
+    marginLeft: theme.spacing.sm,
+    flex: 1,
+  },
+  availableCountBadge: {
+    backgroundColor: theme.colors.success + '20',
+    borderRadius: 12,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  availableCountText: {
+    ...theme.typography.caption,
+    color: theme.colors.success,
     fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: 12,
+  },
+  unavailableCountBadge: {
+    backgroundColor: theme.colors.warning + '20',
+    borderRadius: 12,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  unavailableCountText: {
+    ...theme.typography.caption,
+    color: theme.colors.warning,
+    fontWeight: '600',
   },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: theme.spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: theme.colors.border,
   },
   itemRowLeft: {
     flexDirection: 'row',
@@ -664,296 +855,322 @@ const styles = StyleSheet.create({
   itemImage: {
     width: 40,
     height: 40,
-    borderRadius: 4,
-    marginRight: 10,
+    borderRadius: theme.borderRadius.sm,
+    marginRight: theme.spacing.sm,
+    backgroundColor: theme.colors.background.secondary,
   },
   detailName: {
-    fontSize: 14,
-    color: colors.text.primary,
+    ...theme.typography.body2,
+    color: theme.colors.text.primary,
     flex: 1,
   },
   priceContainer: {
     alignItems: 'flex-end',
   },
+  detailPrice: {
+    ...theme.typography.h5,
+    color: theme.colors.primary.main,
+  },
   detailOrigPrice: {
-    fontSize: 12,
-    color: colors.text.secondary,
+    ...theme.typography.body2,
+    color: theme.colors.text.secondary,
     textDecorationLine: 'line-through',
   },
   detailDiscPrice: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  detailPrice: {
-    fontSize: 14,
-    color: colors.text.primary,
-    fontWeight: '600',
+    ...theme.typography.h5,
+    color: theme.colors.primary.main,
   },
   unavailableRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    alignItems: 'center',
+    paddingVertical: theme.spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: theme.colors.border,
   },
   unavailableText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginLeft: 10,
+    ...theme.typography.body2,
+    color: theme.colors.text.secondary,
+    flex: 1,
+    marginLeft: theme.spacing.sm,
+  },
+  removeItemButton: {
+    padding: theme.spacing.sm,
   },
   unavailableNote: {
-    fontSize: 12,
-    color: colors.text.secondary,
+    ...theme.typography.caption,
+    color: theme.colors.text.secondary,
     fontStyle: 'italic',
-    marginTop: 8,
+    marginTop: theme.spacing.sm,
+  },
+  noItemsText: {
+    ...theme.typography.body2,
+    color: theme.colors.text.secondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 16,
-    paddingTop: 12,
+    paddingTop: theme.spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: theme.colors.border,
+    marginTop: theme.spacing.md,
   },
   totalLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text.primary,
+    ...theme.typography.h5,
+    color: theme.colors.text.primary,
   },
   totalPrice: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.primary,
+    ...theme.typography.h3,
+    color: theme.colors.primary.main,
   },
   warningBox: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.warning + '15',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 16,
+    backgroundColor: theme.colors.warning + '10',
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.sm,
+    marginTop: theme.spacing.md,
+    alignItems: 'flex-start',
   },
   warningText: {
-    fontSize: 14,
-    color: colors.text.primary,
-    marginLeft: 8,
+    ...theme.typography.body2,
+    color: theme.colors.warning,
+    marginLeft: theme.spacing.sm,
     flex: 1,
   },
-  addToCartButton: {
-    backgroundColor: colors.primary,
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addToCartText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
   noResultsContainer: {
-    padding: 24,
+    margin: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    overflow: 'hidden',
+    ...theme.shadows.md,
+  },
+  noResultsGradient: {
+    padding: theme.spacing.xl,
     alignItems: 'center',
-    backgroundColor: colors.background.white,
-    margin: 16,
-    borderRadius: 12,
+    justifyContent: 'center',
   },
   noResultsText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text.primary,
+    ...theme.typography.h5,
+    color: theme.colors.text.primary,
     textAlign: 'center',
-    marginBottom: 8,
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
   },
   noResultsSubtext: {
-    fontSize: 14,
-    color: colors.text.secondary,
+    ...theme.typography.body2,
+    color: theme.colors.text.secondary,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: theme.spacing.lg,
   },
   backToSelectionButton: {
-    backgroundColor: colors.primary,
-    padding: 12,
-    borderRadius: 8,
+    borderRadius: theme.borderRadius.md,
+    overflow: 'hidden',
+    ...theme.shadows.md,
+  },
+  backToSelectionGradient: {
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
   },
   backToSelectionText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
+    ...theme.typography.button,
+    color: theme.colors.primary.contrastText,
   },
   vendorCard: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    backgroundColor: colors.background.white,
+    marginBottom: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    overflow: 'hidden',
+    ...theme.shadows.sm,
   },
   selectedVendorCard: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary + '10',
+    ...theme.shadows.lg,
+  },
+  vendorCardGradient: {
+    padding: theme.spacing.md,
+  },
+  vendorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  vendorInfo: {
+    flex: 1,
   },
   vendorName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-    marginBottom: 4,
+    ...theme.typography.h5,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing.xs,
+  },
+  selectedVendorText: {
+    color: theme.colors.primary.contrastText,
+  },
+  selectedVendorBadge: {
+    backgroundColor: theme.colors.secondary.main,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
   },
   locationText: {
-    fontSize: 13,
-    color: colors.text.secondary,
-    marginLeft: 4,
+    ...theme.typography.body2,
+    color: theme.colors.text.secondary,
+    marginLeft: theme.spacing.xs,
     flex: 1,
   },
   availabilityRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginBottom: theme.spacing.sm,
   },
   availabilityText: {
-    fontSize: 13,
-    color: colors.text.secondary,
+    ...theme.typography.body2,
+    color: theme.colors.text.secondary,
   },
   warningTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.warning + '20',
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderRadius: 4,
+    backgroundColor: theme.colors.warning + '20',
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.borderRadius.sm,
   },
   warningTagText: {
-    fontSize: 12,
-    color: colors.warning,
-    marginLeft: 4,
+    ...theme.typography.caption,
+    color: theme.colors.warning,
+    marginLeft: theme.spacing.xs,
+    fontWeight: '600',
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    marginBottom: theme.spacing.xs,
   },
   originalPrice: {
-    fontSize: 14,
-    color: colors.text.secondary,
+    ...theme.typography.body2,
+    color: theme.colors.text.secondary,
     textDecorationLine: 'line-through',
-    marginRight: 8,
+    marginRight: theme.spacing.sm,
   },
   discountedPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.primary,
+    ...theme.typography.h4,
+    color: theme.colors.primary.main,
   },
   savingsText: {
-    fontSize: 14,
-    color: colors.success,
-    marginTop: 4,
+    ...theme.typography.body2,
+    color: theme.colors.success,
+  },
+  selectedSavingsText: {
+    color: theme.colors.primary.contrastText,
   },
   filtersHeader: {
+    margin: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    overflow: 'visible',
+    ...theme.shadows.md,
+    zIndex: 1000,
+  },
+  filtersHeaderGradient: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: colors.background.white,
-    margin: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-    zIndex: 10,
+    padding: theme.spacing.md,
   },
   filterOption: {
     flex: 1,
-    marginHorizontal: 4,
+    marginHorizontal: theme.spacing.xs,
     position: 'relative',
+    zIndex: 1002,
   },
   filterLabel: {
-    fontSize: 12,
-    color: colors.text.secondary,
-    marginBottom: 4,
+    ...theme.typography.caption,
+    color: theme.colors.text.secondary,
+    marginBottom: theme.spacing.xs,
+    textTransform: 'uppercase',
+    fontWeight: '600',
   },
   dropdownButton: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    padding: 8,
-    borderRadius: 8,
+    backgroundColor: theme.colors.background.white,
+    padding: theme.spacing.sm,
+    borderRadius: theme.borderRadius.sm,
+    ...theme.shadows.xs,
   },
   dropdownButtonText: {
-    fontSize: 14,
-    color: colors.text.primary,
+    ...theme.typography.body2,
+    color: theme.colors.text.primary,
   },
   dropdownOptions: {
     position: 'absolute',
     top: 64,
     left: 0,
     right: 0,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
-    zIndex: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    backgroundColor: theme.colors.background.white,
+    borderRadius: theme.borderRadius.md,
+    ...theme.shadows.lg,
+    zIndex: 1001,
   },
   dropdownOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
+    padding: theme.spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: theme.colors.border,
   },
   dropdownOptionSelected: {
-    backgroundColor: '#f6f0ff',
+    backgroundColor: theme.colors.primary.main + '10',
   },
   dropdownOptionText: {
-    fontSize: 14,
-    color: colors.text.primary,
+    ...theme.typography.body2,
+    color: theme.colors.text.primary,
   },
   dropdownOptionTextSelected: {
-    color: colors.primary,
-    fontWeight: '500',
+    color: theme.colors.primary.main,
+    fontWeight: '600',
   },
   selectedItemCard: {
-    padding: 12,
+    paddingVertical: theme.spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: theme.colors.border,
   },
   selectedItemInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   selectedItemTitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: colors.text.primary,
+    ...theme.typography.body1,
+    color: theme.colors.text.primary,
   },
-  removeItemButton: {
-    padding: 8,
+  addToCartContainer: {
+    padding: theme.spacing.md,
+    ...theme.shadows.lg,
   },
-  noItemsText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    padding: 12,
-  }
+  addToCartGradient: {
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+  },
+  addToCartButton: {
+    borderRadius: theme.borderRadius.md,
+    overflow: 'hidden',
+    ...theme.shadows.md,
+  },
+  addToCartButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: theme.spacing.md,
+  },
+  addToCartText: {
+    ...theme.typography.button,
+    color: theme.colors.primary.contrastText,
+    marginLeft: theme.spacing.sm,
+  },
 });

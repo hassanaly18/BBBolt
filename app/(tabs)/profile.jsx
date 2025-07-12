@@ -11,7 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
-import theme from '../theme';
+import theme from '../constants/theme';
 import {
   User,
   Mail,
